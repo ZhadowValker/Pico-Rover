@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 Rover Remote Control</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-left">
+            <h1>🤖 Rover Control</h1>
+        </div>
+        <div class="header-right">
+            <span id="connection" class="status-badge">🔴 Offline</span>
+            <span id="battery" class="status-badge">🔋 --</span>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="container">
+        
+        <!-- Connection Status -->
+        <section class="card status-card">
+            <h2>Connection Status</h2>
+            <div id="connection-info">
+                <p><strong>Rover IP:</strong> <span id="rover-ip">Searching...</span></p>
+                <p><strong>Signal:</strong> <span id="signal-strength">--</span></p>
+                <p><strong>Status:</strong> <span id="status-text">Connecting...</span></p>
+            </div>
+            <button id="reconnect-btn" class="btn btn-secondary">🔄 Reconnect</button>
+        </section>
+
+        <!-- Control Mode Selection -->
+        <section class="card mode-selector">
+            <h2>Control Mode</h2>
+            <div class="mode-buttons">
+                <button id="gyro-mode-btn" class="mode-btn active" data-mode="gyro">📱 Gyroscope</button>
+                <button id="joystick-mode-btn" class="mode-btn" data-mode="joystick">🕹️ Joystick</button>
+                <button id="keyboard-mode-btn" class="mode-btn" data-mode="keyboard">⌨️ Keyboard</button>
+            </div>
+        </section>
+
+        <!-- Gyroscope Control -->
+        <section class="card control-section" id="gyro-section">
+            <h2>📱 Gyroscope Control</h2>
+            <p class="hint">Tilt your phone to control the rover</p>
+            <div class="gyro-display">
+                <div class="gyro-readout">
+                    <div class="readout-item">
+                        <span class="label">Roll:</span>
+                        <span id="roll-value" class="value">0°</span>
+                    </div>
+                    <div class="readout-item">
+                        <span class="label">Pitch:</span>
+                        <span id="pitch-value" class="value">0°</span>
+                    </div>
+                    <div class="readout-item">
+                        <span class="label">Yaw:</span>
+                        <span id="yaw-value" class="value">0°</span>
+                    </div>
+                </div>
+                <canvas id="gyro-visual" width="200" height="200"></canvas>
+            </div>
+            <button id="gyro-permission-btn" class="btn btn-small">📍 Request Permission</button>
+        </section>
+
+        <!-- Joystick Control -->
+        <section class="card control-section" id="joystick-section" style="display:none;">
+            <h2>🕹️ Joystick Control</h2>
+            <p class="hint">Move the joystick to control direction and speed</p>
+            <div id="joystick-container" class="joystick-container"></div>
+        </section>
+
+        <!-- Keyboard/D-Pad Control -->
+        <section class="card control-section" id="keyboard-section" style="display:none;">
+            <h2>⌨️ Keyboard/D-Pad Control</h2>
+            <p class="hint">Use arrow keys or buttons to control the rover</p>
+            <div class="dpad">
+                <div class="dpad-spacer"></div>
+                <button class="dpad-btn dpad-up" data-direction="up">↑</button>
+                <div class="dpad-spacer"></div>
+                
+                <button class="dpad-btn dpad-left" data-direction="left">←</button>
+                <button class="dpad-btn dpad-center" data-direction="stop">⏹</button>
+                <button class="dpad-btn dpad-right" data-direction="right">→</button>
+                
+                <div class="dpad-spacer"></div>
+                <button class="dpad-btn dpad-down" data-direction="down">↓</button>
+                <div class="dpad-spacer"></div>
+            </div>
+        </section>
+
+        <!-- Speed Control -->
+        <section class="card">
+            <h2>Speed Control</h2>
+            <div class="speed-control">
+                <label for="speed-slider">Max Speed:</label>
+                <input type="range" id="speed-slider" min="10" max="100" value="60" class="slider">
+                <span id="speed-display" class="speed-value">60%</span>
+            </div>
+            <div class="speed-presets">
+                <button class="preset-btn" data-speed="25">Slow (25%)</button>
+                <button class="preset-btn" data-speed="50">Med (50%)</button>
+                <button class="preset-btn active" data-speed="75">Fast (75%)</button>
+            </div>
+        </section>
+
+        <!-- Motor Status -->
+        <section class="card">
+            <h2>Motor Status</h2>
+            <div class="motor-display">
+                <div class="motor-item">
+                    <span class="motor-label">Motor A (Left)</span>
+                    <div class="motor-bar">
+                        <div id="motor-a-bar" class="motor-fill"></div>
+                    </div>
+                    <span id="motor-a-value" class="motor-value">0%</span>
+                </div>
+                <div class="motor-item">
+                    <span class="motor-label">Motor B (Right)</span>
+                    <div class="motor-bar">
+                        <div id="motor-b-bar" class="motor-fill"></div>
+                    </div>
+                    <span id="motor-b-value" class="motor-value">0%</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Telemetry -->
+        <section class="card">
+            <h2>Telemetry</h2>
+            <div class="telemetry-grid">
+                <div class="telemetry-item">
+                    <span class="telem-label">Battery:</span>
+                    <span id="battery-voltage" class="telem-value">-- V</span>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telem-label">Battery %:</span>
+                    <span id="battery-percent" class="telem-value">--%</span>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telem-label">Uptime:</span>
+                    <span id="uptime" class="telem-value">0s</span>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telem-label">Latency:</span>
+                    <span id="latency" class="telem-value">-- ms</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Emergency Controls -->
+        <section class="card emergency-section">
+            <div class="emergency-buttons">
+                <button id="stop-btn" class="btn btn-danger btn-large">🛑 EMERGENCY STOP</button>
+                <button id="settings-btn" class="btn btn-secondary">⚙️ Settings</button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="modal-close" id="settings-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-item">
+                    <label for="rover-ip-input">Rover IP Address:</label>
+                    <input type="text" id="rover-ip-input" placeholder="192.168.1.100" class="input">
+                </div>
+                <div class="setting-item">
+                    <label for="rover-port-input">Rover Port:</label>
+                    <input type="number" id="rover-port-input" value="8000" class="input" min="1" max="65535">
+                </div>
+                <div class="setting-item">
+                    <label for="update-rate-input">Update Rate (Hz):</label>
+                    <input type="number" id="update-rate-input" value="10" class="input" min="1" max="30">
+                </div>
+                <div class="setting-item checkbox">
+                    <input type="checkbox" id="debug-mode-check">
+                    <label for="debug-mode-check">Debug Mode</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="settings-save" class="btn btn-primary">💾 Save</button>
+                <button id="settings-cancel" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="libs/nipple.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/gyro.js"></script>
+    <script src="js/joystick.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
