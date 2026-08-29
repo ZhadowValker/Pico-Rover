@@ -1,122 +1,246 @@
-name: Pico-Rover
+name: Pico-Rover CI/CD
+
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
+
   pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
+
+  workflow_dispatch:
+
+# Default to read-only.
+# The deploy job grants only the permissions it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: pico-rover-pages
+  cancel-in-progress: true
+
+
+# ============================================================
+# CI — VALIDATE THE PROJECT
+# ============================================================
 
 jobs:
 
-  # ============================
-  # 🧪 CI PHASE (CHECK CODE)
-  # ============================
   ci:
-    name: 🧪 CI - Code Validation
+    name: 🧪 Validate Pico-Rover
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Get code from GitHub
-      - name: 📥 Checkout Code
+
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
+
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Setup Node (needed for tools)
-      - name: 🟢 Setup Node
+
+      # --------------------------------------------------------
+      # Python / Pico W firmware validation
+      # --------------------------------------------------------
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+
+      - name: 🔍 Validate firmware Python syntax
+        run: |
+          python -m compileall -q firmware
+
+
+      # --------------------------------------------------------
+      # Verify required project structure
+      # --------------------------------------------------------
+
+      - name: 📁 Validate project structure
+        shell: bash
+        run: |
+          set -e
+
+          test -f README.md
+
+          test -d frontend
+          test -f frontend/index.html
+
+          test -d firmware
+          test -f firmware/main.py
+          test -f firmware/config.py
+          test -f firmware/motor_control.py
+          test -f firmware/wifi_manager.py
+          test -f firmware/api_server.py
+
+          test -d docs
+
+          echo "Project structure OK."
+
+
+      # --------------------------------------------------------
+      # HTML validation
+      # --------------------------------------------------------
+
+      - name: 🌐 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: "22"
 
-      # Step 3: Install tools for validation
-      - name: 📦 Install Tools
+
+      - name: 📦 Install frontend validation tools
         run: |
-          npm init -y
-          npm install eslint htmlhint stylelint stylelint-config-standard --save-dev
-
-      # Step 4: Check JavaScript errors
-      - name: 🔍 Run ESLint
-        run: npx eslint . || true
-
-      # Step 5: Validate HTML
-      - name: ✅ Check HTML
-        run: npx htmlhint "**/*.html" || true
-
-      # Step 6: Validate CSS
-      - name: 🎨 Check CSS
-        run: npx stylelint "**/*.css" || true
+          npm install --no-save \
+            htmlhint \
+            eslint \
+            stylelint
 
 
-  # ============================
-  # 📦 BUILD PHASE
-  # ============================
+      - name: ✅ Validate HTML
+        run: |
+          npx htmlhint "frontend/**/*.html"
+
+
+      # --------------------------------------------------------
+      # Basic JavaScript validation
+      # --------------------------------------------------------
+
+      - name: ⚙️ Validate JavaScript
+        run: |
+          npx eslint "frontend/**/*.js" \
+            --no-config-lookup \
+            --rule 'no-unused-vars: warn' \
+            --rule 'no-undef: warn'
+
+
+      # --------------------------------------------------------
+      # Basic CSS validation
+      # --------------------------------------------------------
+
+      - name: 🎨 Validate CSS
+        run: |
+          npx stylelint "frontend/**/*.css" \
+            --config-basedir frontend \
+            --allow-empty-input
+
+
+      # --------------------------------------------------------
+      # Check for accidental secrets
+      # --------------------------------------------------------
+
+      - name: 🔐 Check for obvious credential leaks
+        shell: bash
+        run: |
+          set -e
+
+          if grep -RniE \
+            --exclude-dir=.git \
+            --exclude-dir=node_modules \
+            --exclude='*.md' \
+            -E 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' \
+            .; then
+
+            echo "ERROR: Possible GitHub token detected."
+            exit 1
+          fi
+
+          echo "No obvious GitHub token detected."
+
+
+  # ============================================================
+  # BUILD — PREPARE ONLY THE WEB APPLICATION
+  # ============================================================
+
   build:
-    name: 📦 Build Application
+    name: 📦 Build Web Application
     runs-on: ubuntu-latest
-    needs: ci   # Only run if CI is successful
+
+    needs:
+      - ci
 
     steps:
-      # Step 1: Get code again
-      - name: 📥 Checkout Code
+
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Create production folder
-      - name: 📦 Prepare Build
+
+      - name: ⚙️ Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+
+      # --------------------------------------------------------
+      # Build Pages site
+      #
+      # IMPORTANT:
+      # Only frontend/ is deployed.
+      #
+      # firmware/ and docs/ remain in GitHub but are NOT
+      # published as the live control application.
+      # --------------------------------------------------------
+
+      - name: 🏗️ Build frontend
+        shell: bash
         run: |
-          mkdir dist
-          rsync -av \
-            --exclude=dist \
-            --exclude=.git \
-            --exclude=.github \
-            ./ dist/
+          set -e
 
-      # Step 3: Save build as artifact
-      - name: 📤 Upload Build
-        uses: actions/upload-artifact@v4
+          rm -rf _site
+          mkdir -p _site
+
+          cp -R frontend/. _site/
+
+          # Prevent GitHub Pages/Jekyll from changing files.
+          touch _site/.nojekyll
+
+          echo "Pages site:"
+          find _site -maxdepth 3 -type f | sort
+
+
+      # --------------------------------------------------------
+      # Upload Pages artifact
+      # --------------------------------------------------------
+
+      - name: 📤 Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: space-impact-build
-          path: dist
+          path: _site
 
 
-  # ============================
-  # 🚀 CD PHASE (DEPLOY)
-  # ============================
+  # ============================================================
+  # DEPLOY — GITHUB PAGES
+  # ============================================================
+
   deploy:
-    name: 🚀 Deploy Application
+    name: 🚀 Deploy GitHub Pages
     runs-on: ubuntu-latest
-    needs: build   # Only run if Build is successful
 
+    needs:
+      - build
+
+    # GitHub Pages requires these permissions.
     permissions:
+      contents: read
       pages: write
       id-token: write
 
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      # Step 1: Download built files
-      - name: 📥 Download Build
-        uses: actions/download-artifact@v4
-        with:
-          name: space-impact-build
-          path: dist
 
-      # Step 2: Setup GitHub Pages
-      - name: ⚙️ Setup Pages
-        uses: actions/configure-pages@v4
-
-      # Step 3: Upload files to Pages
-      - name: 📤 Upload to Pages
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-      # Step 4: Deploy website
-      - name: 🚀 Deploy
-        id: deploy
+      - name: 🚀 Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
 
-      # Step 5: Show live website link
-      - name: 🌐 Show Live URL
+      - name: 🌐 Display deployed URL
         run: |
-          echo "🎉 Deployment Successful!"
-          echo "🌍 Website URL:"
-          echo "${{ steps.deploy.outputs.page_url }}"
+          echo "======================================"
+          echo " Pico-Rover deployment successful"
+          echo "======================================"
+          echo ""
+          echo "Live URL:"
+          echo "${{ steps.deployment.outputs.page_url }}"
