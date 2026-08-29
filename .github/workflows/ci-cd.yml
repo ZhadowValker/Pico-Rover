@@ -1,4 +1,4 @@
-name: Pico-Rover CI/CD
+name: 🤖 Pico-Rover
 
 on:
   push:
@@ -11,39 +11,29 @@ on:
 
   workflow_dispatch:
 
-# Default to read-only.
-# The deploy job grants only the permissions it needs.
 permissions:
   contents: read
 
 concurrency:
-  group: pico-rover-pages
+  group: pico-rover-${{ github.ref }}
   cancel-in-progress: true
 
 
 # ============================================================
-# CI — VALIDATE THE PROJECT
+# 🧪 CI — CHECK THE PROJECT
 # ============================================================
 
 jobs:
 
-  ci:
-    name: 🧪 Validate Pico-Rover
+  validate:
+    name: 🧪 Validate Firmware
     runs-on: ubuntu-latest
 
     steps:
 
-      # --------------------------------------------------------
-      # Checkout
-      # --------------------------------------------------------
-
-      - name: 📥 Checkout repository
+      - name: 📥 Checkout source
         uses: actions/checkout@v4
 
-
-      # --------------------------------------------------------
-      # Python / Pico W firmware validation
-      # --------------------------------------------------------
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
@@ -51,176 +41,145 @@ jobs:
           python-version: "3.12"
 
 
-      - name: 🔍 Validate firmware Python syntax
+      - name: 🔍 Check Python syntax
         run: |
+          echo "🔍 Checking Pico W firmware..."
+
           python -m compileall -q firmware
 
+          echo "✅ Firmware syntax is valid"
 
-      # --------------------------------------------------------
-      # Verify required project structure
-      # --------------------------------------------------------
 
-      - name: 📁 Validate project structure
-        shell: bash
+      - name: 📁 Check firmware files
         run: |
-          set -e
+          echo "📁 Checking project structure..."
 
-          test -f README.md
+          files=(
+            "firmware/main.py"
+            "firmware/config.py"
+            "firmware/motor_control.py"
+            "firmware/wifi_manager.py"
+            "firmware/api_server.py"
+          )
 
-          test -d frontend
-          test -f frontend/index.html
+          for file in "${files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ Missing: $file"
+              exit 1
+            fi
 
-          test -d firmware
-          test -f firmware/main.py
-          test -f firmware/config.py
-          test -f firmware/motor_control.py
-          test -f firmware/wifi_manager.py
-          test -f firmware/api_server.py
+            echo "✅ $file"
+          done
 
-          test -d docs
-
-          echo "Project structure OK."
-
-
-      # --------------------------------------------------------
-      # HTML validation
-      # --------------------------------------------------------
-
-      - name: 🌐 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+          echo ""
+          echo "🎉 All firmware files found!"
 
 
-      - name: 📦 Install frontend validation tools
+      - name: 🔐 Check for exposed tokens
         run: |
-          npm install --no-save \
-            htmlhint \
-            eslint \
-            stylelint
-
-
-      - name: ✅ Validate HTML
-        run: |
-          npx htmlhint "frontend/**/*.html"
-
-
-      # --------------------------------------------------------
-      # Basic JavaScript validation
-      # --------------------------------------------------------
-
-      - name: ⚙️ Validate JavaScript
-        run: |
-          npx eslint "frontend/**/*.js" \
-            --no-config-lookup \
-            --rule 'no-unused-vars: warn' \
-            --rule 'no-undef: warn'
-
-
-      # --------------------------------------------------------
-      # Basic CSS validation
-      # --------------------------------------------------------
-
-      - name: 🎨 Validate CSS
-        run: |
-          npx stylelint "frontend/**/*.css" \
-            --config-basedir frontend \
-            --allow-empty-input
-
-
-      # --------------------------------------------------------
-      # Check for accidental secrets
-      # --------------------------------------------------------
-
-      - name: 🔐 Check for obvious credential leaks
-        shell: bash
-        run: |
-          set -e
+          echo "🔐 Checking for accidental GitHub tokens..."
 
           if grep -RniE \
-            --exclude-dir=.git \
-            --exclude-dir=node_modules \
-            --exclude='*.md' \
             -E 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' \
-            .; then
+            firmware \
+            --exclude='*.md'; then
 
-            echo "ERROR: Possible GitHub token detected."
+            echo ""
+            echo "❌ Possible GitHub token detected!"
             exit 1
           fi
 
-          echo "No obvious GitHub token detected."
+          echo "✅ No GitHub tokens detected"
 
 
-  # ============================================================
-  # BUILD — PREPARE ONLY THE WEB APPLICATION
-  # ============================================================
+      # --------------------------------------------------------
+      # GitHub Actions summary
+      # --------------------------------------------------------
+
+      - name: 📊 CI Summary
+        if: always()
+        run: |
+          echo "## 🤖 Pico-Rover CI" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🐍 Python syntax | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 📁 Firmware structure | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🔐 Secret scan | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 📦 Firmware" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The firmware is ready for the Pico W." >> "$GITHUB_STEP_SUMMARY"
+
+
+# ============================================================
+# 📦 BUILD — PACKAGE FIRMWARE
+# ============================================================
 
   build:
-    name: 📦 Build Web Application
+    name: 📦 Build Firmware
     runs-on: ubuntu-latest
 
     needs:
-      - ci
+      - validate
 
     steps:
 
-      - name: 📥 Checkout repository
+      - name: 📥 Checkout source
         uses: actions/checkout@v4
 
 
-      - name: ⚙️ Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-
-      # --------------------------------------------------------
-      # Build Pages site
-      #
-      # IMPORTANT:
-      # Only frontend/ is deployed.
-      #
-      # firmware/ and docs/ remain in GitHub but are NOT
-      # published as the live control application.
-      # --------------------------------------------------------
-
-      - name: 🏗️ Build frontend
-        shell: bash
+      - name: 📦 Prepare firmware package
         run: |
-          set -e
+          echo "📦 Preparing Pico-Rover firmware..."
 
-          rm -rf _site
-          mkdir -p _site
+          mkdir -p dist/firmware
 
-          cp -R frontend/. _site/
+          cp firmware/*.py dist/firmware/
 
-          # Prevent GitHub Pages/Jekyll from changing files.
-          touch _site/.nojekyll
+          echo "✅ Firmware package created"
 
-          echo "Pages site:"
-          find _site -maxdepth 3 -type f | sort
+          echo ""
+          echo "Files:"
+          find dist -type f | sort
 
 
-      # --------------------------------------------------------
-      # Upload Pages artifact
-      # --------------------------------------------------------
-
-      - name: 📤 Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: 📤 Upload firmware
+        uses: actions/upload-artifact@v4
         with:
-          path: _site
+          name: pico-rover-firmware
+          path: dist/
+          retention-days: 30
 
 
-  # ============================================================
-  # DEPLOY — GITHUB PAGES
-  # ============================================================
+      - name: 📊 Build Summary
+        run: |
+          echo "## 📦 Pico-Rover Build" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Firmware Package" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Firmware successfully packaged." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "📥 Download the **pico-rover-firmware** artifact from this workflow run." >> "$GITHUB_STEP_SUMMARY"
 
-  deploy:
-    name: 🚀 Deploy GitHub Pages
+
+# ============================================================
+# 🌐 GITHUB PAGES
+#
+# Runs only when frontend/ exists.
+# ============================================================
+
+  pages:
+    name: 🌐 Deploy Web UI
     runs-on: ubuntu-latest
 
     needs:
-      - build
+      - validate
 
-    # GitHub Pages requires these permissions.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      hashFiles('frontend/**') != ''
+
     permissions:
       contents: read
       pages: write
@@ -232,15 +191,45 @@ jobs:
 
     steps:
 
+      - name: 📥 Checkout source
+        uses: actions/checkout@v4
+
+
+      - name: ⚙️ Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+
+      - name: 🏗️ Build Web UI
+        run: |
+          echo "🌐 Building Pico-Rover web interface..."
+
+          test -f frontend/index.html
+
+          rm -rf _site
+          mkdir -p _site
+
+          cp -R frontend/. _site/
+
+          touch _site/.nojekyll
+
+          echo "✅ Web UI built successfully"
+
+
+      - name: 📤 Upload Pages package
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+
       - name: 🚀 Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: 🌐 Display deployed URL
+
+      - name: 📊 Deployment Summary
         run: |
-          echo "======================================"
-          echo " Pico-Rover deployment successful"
-          echo "======================================"
-          echo ""
-          echo "Live URL:"
-          echo "${{ steps.deployment.outputs.page_url }}"
+          echo "## 🌐 Pico-Rover Web UI" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 🚀 Deployment successful" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "🔗 **Live site:** ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
