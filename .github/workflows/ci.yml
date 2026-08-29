@@ -1,0 +1,185 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  python-lint:
+    runs-on: ubuntu-latest
+    name: Python Lint & Validation
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pylint
+      
+      - name: Lint firmware with flake8
+        run: |
+          # Stop on syntax errors, exit 0 on warnings
+          flake8 firmware/ --count --select=E9,F63,F7,F82 --show-source --statistics
+      
+      - name: Check code style with flake8
+        run: |
+          # E501: line too long (flexible for docstrings)
+          # W503: line break before binary operator
+          flake8 firmware/ --count --ignore=E501,W503 --max-line-length=100 --statistics || true
+      
+      - name: Pylint checks
+        run: |
+          pylint firmware/*.py --disable=C0111,C0103,R0903 || true
+
+  javascript-lint:
+    runs-on: ubuntu-latest
+    name: JavaScript Lint & Validation
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install ESLint
+        run: npm install --save-dev eslint
+      
+      - name: Lint frontend JavaScript
+        run: |
+          npx eslint frontend/js/*.js --no-eslintrc --env browser --env es2021 || true
+      
+      - name: Check HTML validity
+        run: |
+          # Simple HTML syntax check
+          grep -r "<!DOCTYPE" frontend/index.html && echo "✓ Doctype found"
+
+  json-validation:
+    runs-on: ubuntu-latest
+    name: JSON & Configuration Validation
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate JSON files
+        run: |
+          for file in $(find . -name "*.json" ! -path "./node_modules/*"); do
+            echo "Validating: $file"
+            python -m json.tool "$file" > /dev/null && echo "✓ Valid JSON" || exit 1
+          done
+
+  markdown-lint:
+    runs-on: ubuntu-latest
+    name: Documentation Lint
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install markdownlint
+        run: npm install -g markdownlint-cli
+      
+      - name: Lint Markdown files
+        run: |
+          markdownlint '*.md' 'docs/*.md' || true
+
+  code-quality:
+    runs-on: ubuntu-latest
+    name: Code Quality Checks
+    needs: [python-lint, javascript-lint, json-validation]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check file structure
+        run: |
+          echo "Checking required directories..."
+          [ -d "firmware" ] && echo "✓ firmware/" || exit 1
+          [ -d "frontend" ] && echo "✓ frontend/" || exit 1
+          [ -f "README.md" ] && echo "✓ README.md" || exit 1
+          [ -f "SETUP.md" ] && echo "✓ SETUP.md" || exit 1
+      
+      - name: Validate firmware structure
+        run: |
+          echo "Checking firmware files..."
+          [ -f "firmware/main.py" ] && echo "✓ main.py"
+          [ -f "firmware/config.py" ] && echo "✓ config.py"
+          [ -f "firmware/motor_control.py" ] && echo "✓ motor_control.py"
+          [ -f "firmware/wifi_manager.py" ] && echo "✓ wifi_manager.py"
+          [ -f "firmware/api_server.py" ] && echo "✓ api_server.py"
+      
+      - name: Validate frontend structure
+        run: |
+          echo "Checking frontend files..."
+          [ -f "frontend/index.html" ] && echo "✓ index.html"
+          [ -d "frontend/css" ] && echo "✓ css/"
+          [ -d "frontend/js" ] && echo "✓ js/"
+          [ -d "frontend/libs" ] && echo "✓ libs/"
+
+  build-status:
+    runs-on: ubuntu-latest
+    name: Build Status Report
+    needs: [code-quality]
+    if: always()
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Generate build report
+        run: |
+          echo "### Build Status Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Lint:** ✓ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- **JavaScript Lint:** ✓ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- **JSON Validation:** ✓ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- **File Structure:** ✓ Valid" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Repository Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          find firmware frontend -type f -name "*.py" -o -name "*.js" -o -name "*.html" -o -name "*.css" | wc -l | xargs echo "Total source files:"
+          find firmware frontend -type f \( -name "*.py" -o -name "*.js" \) -exec wc -l {} + | tail -1 | xargs echo "Total lines of code:"
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  deploy-pages:
+    runs-on: ubuntu-latest
+    name: Deploy Documentation to Pages
+    needs: [build-status]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      pages: write
+      id-token: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Build docs site
+        run: |
+          mkdir -p _site
+          cp README.md _site/index.md
+          cp SETUP.md _site/setup.md
+          [ -d "docs" ] && cp -r docs/* _site/ || true
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v3

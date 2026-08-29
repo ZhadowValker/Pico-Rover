@@ -1,0 +1,195 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Python firmware validation
+  python-lint:
+    runs-on: ubuntu-latest
+    name: Python Linting (Firmware)
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pylint flake8
+      
+      - name: Lint firmware with flake8
+        run: |
+          # Stop build on syntax errors
+          flake8 firmware/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Warn on style issues
+          flake8 firmware/ --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+        continue-on-error: true
+      
+      - name: Check Python syntax
+        run: |
+          python -m py_compile firmware/config.py
+          python -m py_compile firmware/motor_control.py
+          python -m py_compile firmware/wifi_manager.py
+          python -m py_compile firmware/api_server.py
+          python -m py_compile firmware/main.py
+
+  # JavaScript frontend validation
+  javascript-lint:
+    runs-on: ubuntu-latest
+    name: JavaScript Linting (Frontend)
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: |
+          npm install -g eslint
+        continue-on-error: true
+      
+      - name: Validate JavaScript syntax
+        run: |
+          node -c frontend/js/api.js
+          node -c frontend/js/gyro.js
+          node -c frontend/js/joystick.js
+          node -c frontend/js/control.js
+          node -c frontend/js/ui.js
+          node -c frontend/js/app.js
+      
+      - name: Validate HTML
+        run: |
+          npm install -g htmlhint
+          htmlhint frontend/*.html
+        continue-on-error: true
+      
+      - name: Check CSS validity
+        run: |
+          npm install -g stylelint stylelint-config-standard
+          stylelint frontend/css/*.css --config-basedir node_modules
+        continue-on-error: true
+
+  # Build and test
+  build:
+    runs-on: ubuntu-latest
+    name: Build & Package
+    needs: [python-lint, javascript-lint]
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Create firmware archive
+        run: |
+          mkdir -p build/firmware
+          cp firmware/*.py build/firmware/
+          zip -r build/pico-firmware.zip build/firmware/
+          echo "✅ Firmware packaged"
+      
+      - name: Create frontend archive
+        run: |
+          mkdir -p build/frontend
+          cp -r frontend/* build/frontend/
+          zip -r build/pico-frontend.zip build/frontend/
+          echo "✅ Frontend packaged"
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: pico-rover-builds
+          path: build/
+          retention-days: 30
+
+  # Deploy to GitHub Pages
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+      
+      - name: Build site
+        run: |
+          mkdir -p _site
+          cp -r frontend/* _site/
+          echo "✅ Site built"
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: '_site'
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
+
+  # Security scanning (optional)
+  security:
+    runs-on: ubuntu-latest
+    name: Security Checks
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Trivy security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+      
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+  # Final notification
+  notify:
+    runs-on: ubuntu-latest
+    name: Pipeline Status
+    needs: [python-lint, javascript-lint, build, deploy]
+    if: always()
+    
+    steps:
+      - name: Check pipeline status
+        run: |
+          echo "🎯 Pipeline Summary:"
+          echo "  ✅ Python Linting: ${{ needs.python-lint.result }}"
+          echo "  ✅ JavaScript Linting: ${{ needs.javascript-lint.result }}"
+          echo "  ✅ Build: ${{ needs.build.result }}"
+          echo "  ✅ Deploy: ${{ needs.deploy.result }}"
+          
+          if [ "${{ needs.python-lint.result }}" != "success" ] || \
+             [ "${{ needs.javascript-lint.result }}" != "success" ] || \
+             [ "${{ needs.build.result }}" != "success" ]; then
+            echo "⚠️ Pipeline completed with warnings/errors"
+          else
+            echo "✅ Pipeline succeeded!"
+          fi
