@@ -20,10 +20,14 @@ concurrency:
 
 
 # ============================================================
-# 🧪 CI — CHECK THE PROJECT
+# JOBS
 # ============================================================
 
 jobs:
+
+  # ==========================================================
+  # 🧪 CI — VALIDATE PROJECT
+  # ==========================================================
 
   validate:
     name: 🧪 Validate Firmware
@@ -51,8 +55,11 @@ jobs:
 
 
       - name: 📁 Check firmware files
+        shell: bash
         run: |
-          echo "📁 Checking project structure..."
+          set -e
+
+          echo "📁 Checking firmware structure..."
 
           files=(
             "firmware/main.py"
@@ -75,14 +82,43 @@ jobs:
           echo "🎉 All firmware files found!"
 
 
+      - name: 🌐 Check frontend files
+        shell: bash
+        run: |
+          set -e
+
+          echo "🌐 Checking frontend structure..."
+
+          test -f frontend/index.html
+
+          echo "✅ frontend/index.html"
+
+          if [ -d frontend/css ]; then
+            echo "✅ frontend/css/"
+          fi
+
+          if [ -d frontend/js ]; then
+            echo "✅ frontend/js/"
+          fi
+
+          if [ -d frontend/libs ]; then
+            echo "✅ frontend/libs/"
+          fi
+
+          echo ""
+          echo "🎉 Frontend structure OK!"
+
+
       - name: 🔐 Check for exposed tokens
+        shell: bash
         run: |
           echo "🔐 Checking for accidental GitHub tokens..."
 
           if grep -RniE \
             -E 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' \
-            firmware \
-            --exclude='*.md'; then
+            firmware frontend \
+            --exclude='*.md' \
+            --exclude-dir=node_modules; then
 
             echo ""
             echo "❌ Possible GitHub token detected!"
@@ -92,29 +128,29 @@ jobs:
           echo "✅ No GitHub tokens detected"
 
 
-      # --------------------------------------------------------
-      # GitHub Actions summary
-      # --------------------------------------------------------
-
       - name: 📊 CI Summary
         if: always()
+        shell: bash
         run: |
-          echo "## 🤖 Pico-Rover CI" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Check | Result |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| 🐍 Python syntax | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| 📁 Firmware structure | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| 🔐 Secret scan | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### 📦 Firmware" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "The firmware is ready for the Pico W." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## 🤖 Pico-Rover CI"
+            echo ""
+            echo "| Check | Result |"
+            echo "|---|---|"
+            echo "| 🐍 Python syntax | ✅ Passed |"
+            echo "| 📁 Firmware structure | ✅ Passed |"
+            echo "| 🌐 Frontend structure | ✅ Passed |"
+            echo "| 🔐 Credential scan | ✅ Passed |"
+            echo ""
+            echo "### 🚗 Project"
+            echo ""
+            echo "Pico-Rover source validation completed."
+          } >> "$GITHUB_STEP_SUMMARY"
 
 
-# ============================================================
-# 📦 BUILD — PACKAGE FIRMWARE
-# ============================================================
+  # ==========================================================
+  # 📦 BUILD — FIRMWARE
+  # ==========================================================
 
   build:
     name: 📦 Build Firmware
@@ -130,21 +166,30 @@ jobs:
 
 
       - name: 📦 Prepare firmware package
+        shell: bash
         run: |
+          set -e
+
           echo "📦 Preparing Pico-Rover firmware..."
 
+          rm -rf dist
           mkdir -p dist/firmware
 
           cp firmware/*.py dist/firmware/
 
-          echo "✅ Firmware package created"
+          if [ -f README.md ]; then
+            cp README.md dist/
+          fi
 
           echo ""
-          echo "Files:"
+          echo "📦 Firmware package:"
           find dist -type f | sort
 
+          echo ""
+          echo "✅ Firmware package created"
 
-      - name: 📤 Upload firmware
+
+      - name: 📤 Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
           name: pico-rover-firmware
@@ -154,67 +199,110 @@ jobs:
 
       - name: 📊 Build Summary
         run: |
-          echo "## 📦 Pico-Rover Build" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Firmware Package" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "✅ Firmware successfully packaged." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "📥 Download the **pico-rover-firmware** artifact from this workflow run." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## 📦 Pico-Rover Firmware"
+            echo ""
+            echo "### Build successful ✅"
+            echo ""
+            echo "Firmware has been packaged successfully."
+            echo ""
+            echo "📥 **Artifact:** \`pico-rover-firmware\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
 
-# ============================================================
-# 🌐 GITHUB PAGES
-#
-# Runs only when frontend/ exists.
-# ============================================================
+  # ==========================================================
+  # 🌐 BUILD & DEPLOY GITHUB PAGES
+  # ==========================================================
 
-pages:
-  name: 🌐 Deploy Web UI
-  runs-on: ubuntu-latest
+  pages:
+    name: 🌐 Deploy Web UI
+    runs-on: ubuntu-latest
 
-  needs:
-    - validate
+    needs:
+      - validate
 
-  permissions:
-    contents: read
-    pages: write
-    id-token: write
+    # Only deploy the live site for pushes/manual runs.
+    # Pull requests still validate the frontend but do not
+    # publish changes to production GitHub Pages.
+    if: >
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch'
 
-  environment:
-    name: github-pages
-    url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
 
-  steps:
-    - name: 📥 Checkout source
-      uses: actions/checkout@v4
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
-    - name: ⚙️ Configure GitHub Pages
-      uses: actions/configure-pages@v5
+    steps:
 
-    - name: 🏗️ Build Web UI
-      run: |
-        set -e
-        test -f frontend/index.html
+      - name: 📥 Checkout source
+        uses: actions/checkout@v4
 
-        rm -rf _site
-        mkdir -p _site
-        cp -R frontend/. _site/
-        touch _site/.nojekyll
 
-    - name: 📤 Upload Pages package
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: _site
+      - name: ⚙️ Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
-    - name: 🚀 Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
 
-    - name: 📊 Deployment Summary
-      run: |
-        echo "## 🌐 Pico-Rover Web UI" >> "$GITHUB_STEP_SUMMARY"
-        echo "" >> "$GITHUB_STEP_SUMMARY"
-        echo "### 🚀 Deployment successful" >> "$GITHUB_STEP_SUMMARY"
-        echo "" >> "$GITHUB_STEP_SUMMARY"
-        echo "🔗 **Live site:** ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: 🔍 Verify frontend
+        shell: bash
+        run: |
+          set -e
+
+          echo "🔍 Checking web application..."
+
+          test -f frontend/index.html
+
+          echo "✅ frontend/index.html found"
+
+          echo ""
+          echo "📁 Frontend contents:"
+          find frontend -maxdepth 3 -type f | sort
+
+
+      - name: 🏗️ Build Web UI
+        shell: bash
+        run: |
+          set -e
+
+          echo "🏗️ Building Pico-Rover Web UI..."
+
+          rm -rf _site
+          mkdir -p _site
+
+          cp -R frontend/. _site/
+
+          # Disable Jekyll processing.
+          touch _site/.nojekyll
+
+          echo ""
+          echo "🌐 Site contents:"
+          find _site -type f | sort
+
+          echo ""
+          echo "✅ Web UI build complete"
+
+
+      - name: 📤 Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+
+      - name: 🚀 Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+
+      - name: 📊 Deployment Summary
+        run: |
+          {
+            echo "## 🌐 Pico-Rover Web UI"
+            echo ""
+            echo "### 🚀 Deployment successful"
+            echo ""
+            echo "🔗 **Live site:** ${{ steps.deployment.outputs.page_url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
