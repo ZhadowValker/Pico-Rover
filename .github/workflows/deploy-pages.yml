@@ -1,0 +1,69 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    runs-on: ubuntu-latest
+    name: Build & Deploy Frontend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Verify frontend folder exists
+        run: |
+          if [ -d "frontend" ]; then
+            echo "✓ Frontend folder found"
+            ls -la frontend/
+          else
+            echo "✗ Frontend folder not found!"
+            exit 1
+          fi
+      
+      - name: Verify required files
+        run: |
+          echo "Checking required files..."
+          [ -f "frontend/index.html" ] && echo "✓ index.html" || (echo "✗ Missing index.html" && exit 1)
+          [ -f "frontend/css/style.css" ] && echo "✓ style.css" || (echo "✗ Missing style.css" && exit 1)
+          [ -f "frontend/js/app.js" ] && echo "✓ app.js" || (echo "✗ Missing app.js" && exit 1)
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Copy frontend to build directory
+        run: |
+          mkdir -p _site
+          cp -r frontend/* _site/
+          echo "✓ Frontend copied to _site/"
+          ls -la _site/
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+      
+      - name: Print deployment URL
+        run: |
+          echo "✅ Deployment successful!"
+          echo "🌐 URL: ${{ steps.deployment.outputs.page_url }}"
