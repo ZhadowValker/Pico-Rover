@@ -1,0 +1,272 @@
+{
+  "info": {
+    "_postman_id": "pico-rover-api",
+    "name": "Pico Rover API",
+    "description": "Complete API collection for Pico W Rover testing",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "🔌 Connection & Status",
+      "item": [
+        {
+          "name": "Server Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": ["{{base_url}}"],
+              "path": [""]
+            },
+            "description": "Get basic server status (online/offline)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Rover Telemetry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["status"]
+            },
+            "description": "Get detailed rover status: battery, uptime, motor speeds, latency"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🚗 Motor Control",
+      "item": [
+        {
+          "name": "Move Forward (100%)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"a\": 100,\n  \"b\": 100\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/motor",
+              "host": ["{{base_url}}"],
+              "path": ["motor"]
+            },
+            "description": "Full speed forward"
+          },
+          "response": []
+        },
+        {
+          "name": "Move Forward (50%)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"a\": 50,\n  \"b\": 50\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/motor",
+              "host": ["{{base_url}}"],
+              "path": ["motor"]
+            },
+            "description": "Half speed forward"
+          },
+          "response": []
+        },
+        {
+          "name": "Move Backward (100%)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"a\": -100,\n  \"b\": -100\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/motor",
+              "host": ["{{base_url}}"],
+              "path": ["motor"]
+            },
+            "description": "Full speed backward"
+          },
+          "response": []
+        },
+        {
+          "name": "Move Backward (50%)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"a\": -50,\n  \"b\": -50\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/motor",
+              "host": ["{{base_url}}"],
+              "path": ["motor"]
+            },
+            "description": "Half speed backward"
+          },
+          "response": []
+        },
+        {
+          "name": "Turn Left (100%)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"a\": 100,\n  \"b\": -100\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/motor",
+              "host": ["{{base_url}}"],
+              "path": ["motor"]
+            },
+            "description": "Full speed turn left (left motor forward, right motor backward)"
+          },
+          "response": []
+        },
+        {
+          "name": "Turn Right (100%)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"a\": -100,\n  \"b\": 100\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/motor",
+              "host": ["{{base_url}}"],
+              "path": ["motor"]
+            },
+            "description": "Full speed turn right"
+          },
+          "response": []
+        },
+        {
+          "name": "Pivot Left (50%)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"a\": 50,\n  \"b\": -50\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/motor",
+              "host": ["{{base_url}}"],
+              "path": ["motor"]
+            },
+            "description": "Half speed pivot left"
+          },
+          "response": []
+        },
+        {
+          "name": "Emergency Stop",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/motor/stop",
+              "host": ["{{base_url}}"],
+              "path": ["motor", "stop"]
+            },
+            "description": "Immediately stop all motors (emergency stop)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📡 WiFi Management",
+      "item": [
+        {
+          "name": "Scan WiFi Networks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scan",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scan"]
+            },
+            "description": "Scan for available WiFi networks (SSID, RSSI, channel, security)"
+          },
+          "response": []
+        },
+        {
+          "name": "Connect to WiFi (Template)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ssid\": \"MyNetwork\",\n  \"password\": \"mypassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/connect",
+              "host": ["{{base_url}}"],
+              "path": ["api", "connect"]
+            },
+            "description": "Connect Pico to a WiFi network (update ssid and password)"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://192.168.4.1:8000",
+      "type": "string"
+    }
+  ]
+}
