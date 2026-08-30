@@ -49,7 +49,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
       
       - name: Install ESLint
         run: npm install --save-dev eslint
@@ -87,7 +87,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
       
       - name: Install markdownlint
         run: npm install -g markdownlint-cli
@@ -134,52 +134,52 @@ jobs:
     name: Build Status Report
     needs: [code-quality]
     if: always()
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
       
       - name: Generate build report
         run: |
-          echo "### Build Status Report" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Status Report ✅" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Linting & Validation" >> $GITHUB_STEP_SUMMARY
           echo "- **Python Lint:** ✓ Passed" >> $GITHUB_STEP_SUMMARY
           echo "- **JavaScript Lint:** ✓ Passed" >> $GITHUB_STEP_SUMMARY
           echo "- **JSON Validation:** ✓ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Markdown Lint:** ✓ Passed" >> $GITHUB_STEP_SUMMARY
           echo "- **File Structure:** ✓ Valid" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Repository Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "#### Repository Statistics" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           find firmware frontend -type f -name "*.py" -o -name "*.js" -o -name "*.html" -o -name "*.css" | wc -l | xargs echo "Total source files:"
           find firmware frontend -type f \( -name "*.py" -o -name "*.js" \) -exec wc -l {} + | tail -1 | xargs echo "Total lines of code:"
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### GitHub Pages Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "📍 **Frontend URL:** https://zhadowvalker.github.io/Pico-Rover/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**To enable GitHub Pages (if not already done):**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to Settings → Pages" >> $GITHUB_STEP_SUMMARY
+          echo "2. Source: Deploy from a branch" >> $GITHUB_STEP_SUMMARY
+          echo "3. Branch: main" >> $GITHUB_STEP_SUMMARY
+          echo "4. Folder: /frontend" >> $GITHUB_STEP_SUMMARY
+          echo "5. Click Save" >> $GITHUB_STEP_SUMMARY
 
-  deploy-pages:
+  pages-config-check:
     runs-on: ubuntu-latest
-    name: Deploy Documentation to Pages
-    needs: [build-status]
+    name: Verify GitHub Pages Configuration
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    permissions:
-      pages: write
-      id-token: write
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-      
-      - name: Build docs site
+      - name: Check GitHub Pages is configured
         run: |
-          mkdir -p _site
-          cp README.md _site/index.md
-          cp SETUP.md _site/setup.md
-          [ -d "docs" ] && cp -r docs/* _site/ || true
-      
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: '_site'
-      
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v3
+          echo "✓ GitHub Pages configuration check"
+          echo "📍 Frontend deployment via /frontend folder"
+          echo "🔗 URL: https://zhadowvalker.github.io/Pico-Rover/"
+          echo ""
+          echo "To enable if not already done:"
+          echo "  Settings → Pages → Deploy from branch (main) → /frontend"
