@@ -1,263 +1,298 @@
-# api_server.py - REST API Server for Rover Control
+"""
+Pico Rover REST API Server with Static File Serving
+Serves HTML interface + REST API endpoints
+"""
 
 import socket
 import json
 import time
-from machine import ADC
-from config import *
+import gc
+from machine import ADC, Pin
 
 class APIServer:
-    """Simple HTTP REST API server for rover control"""
-    
-    def __init__(self, rover, wifi_manager, port=SERVER_PORT):
+    def __init__(self, rover, port=8000):
+        """
+        Initialize API server
+        
+        Args:
+            rover: Rover instance (from motor_control.py)
+            port: Server port (default 8000)
+        """
         self.rover = rover
-        self.wifi = wifi_manager
         self.port = port
         self.running = False
-        self.boot_time = time.time()
-        self.battery_adc = ADC(BATTERY_ADC)
+        self.start_time = time.time()
+        self.battery_adc = ADC(Pin(26))  # GPIO 26 for battery voltage
+        
+        print(f"[APIServer] Initialized on port {port}")
     
     def get_battery_voltage(self):
-        """Read battery voltage from ADC"""
+        """Read battery voltage from ADC (GPIO 26)"""
         try:
-            adc_value = self.battery_adc.read_u16()
-            # Pico Vref = 3.3V
-            voltage = (adc_value / 65535) * 3.3
-            # Voltage divider correction (if using voltage divider)
-            # voltage *= 2 (example: if dividing by 2)
-            return voltage
+            # Read ADC (0-65535)
+            # Voltage ref: 3.3V
+            # Adjust based on your voltage divider ratio
+            raw_value = self.battery_adc.read_u16()
+            voltage = (raw_value / 65535) * 3.3
+            return round(voltage, 2)
         except:
             return 0.0
     
-    def parse_query_string(self, qs):
-        """Parse query string"""
-        params = {}
-        if qs:
-            for pair in qs.split('&'):
-                if '=' in pair:
-                    key, value = pair.split('=', 1)
-                    try:
-                        params[key] = float(value) if '.' in value else int(value)
-                    except:
-                        params[key] = value
-        return params
+    def get_uptime_ms(self):
+        """Get uptime in milliseconds"""
+        return int((time.time() - self.start_time) * 1000)
     
-    def send_response(self, client, status_code, content_type, body):
-        """Send HTTP response with CORS headers"""
+    def read_file(self, filename):
+        """Read file from filesystem"""
+        try:
+            with open(filename, 'r') as f:
+                return f.read()
+        except OSError:
+            return None
+    
+    def get_mime_type(self, filename):
+        """Get MIME type for file"""
+        if filename.endswith('.html'):
+            return 'text/html'
+        elif filename.endswith('.css'):
+            return 'text/css'
+        elif filename.endswith('.js'):
+            return 'application/javascript'
+        elif filename.endswith('.json'):
+            return 'application/json'
+        elif filename.endswith('.png'):
+            return 'image/png'
+        elif filename.endswith('.jpg') or filename.endswith('.jpeg'):
+            return 'image/jpeg'
+        else:
+            return 'text/plain'
+    
+    def send_response(self, client, status_code, body, content_type='application/json'):
+        """Send HTTP response"""
+        status_messages = {
+            200: 'OK',
+            404: 'Not Found',
+            500: 'Internal Server Error'
+        }
+        
+        status_text = status_messages.get(status_code, 'Unknown')
+        
+        # Build response header
         if isinstance(body, dict):
             body = json.dumps(body)
+            content_type = 'application/json'
         
         if isinstance(body, str):
             body = body.encode()
         
         response = (
-            f"HTTP/1.1 {status_code}\r\n"
-            f"Content-Type: {content_type}\r\n"
+            f"HTTP/1.1 {status_code} {status_text}\r\n"
+            f"Content-Type: {content_type}; charset=utf-8\r\n"
             f"Content-Length: {len(body)}\r\n"
             f"Access-Control-Allow-Origin: *\r\n"
-            f"Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
-            f"Access-Control-Allow-Headers: Content-Type\r\n"
             f"Connection: close\r\n"
             f"\r\n"
-        ).encode() + body
+        )
         
         try:
-            client.sendall(response)
+            client.send(response.encode())
+            client.send(body)
+        except Exception as e:
+            print(f"[APIServer] Error sending response: {e}")
+    
+    def parse_json_body(self, request):
+        """Parse JSON from request body"""
+        try:
+            # Find empty line (end of headers)
+            parts = request.split('\r\n\r\n', 1)
+            if len(parts) > 1:
+                body = parts[1]
+                return json.loads(body)
         except:
             pass
+        return {}
     
-    def handle_get_motor(self, params, client):
-        """GET /motor - Set motor speeds"""
-        speed_a = params.get('a', 0)
-        speed_b = params.get('b', 0)
-        
-        # Clamp speeds
-        speed_a = max(-100, min(100, speed_a))
-        speed_b = max(-100, min(100, speed_b))
-        
-        # Apply to rover
-        self.rover.drive(speed_a, speed_b)
-        
-        response = {
-            'status': 'ok',
-            'a': speed_a,
-            'b': speed_b,
-            'speeds': self.rover.get_speeds()
-        }
-        
-        self.send_response(client, '200 OK', 'application/json', response)
-    
-    def handle_post_motor(self, params, body, client):
-        """POST /motor - Set motor speeds"""
-        self.handle_get_motor(params, client)
-    
-    def handle_get_status(self, client):
-        """GET /status - Get rover status"""
-        uptime = int(time.time() - self.boot_time)
-        battery = self.get_battery_voltage()
-        
-        status = {
-            'status': 'ok',
-            'connected': self.wifi.connected,
-            'uptime': uptime,
-            'battery': battery,
-            'motors': self.rover.get_speeds(),
-            'wifi': self.wifi.get_status()
-        }
-        
-        self.send_response(client, '200 OK', 'application/json', status)
-    
-    def handle_get_scan(self, client):
-        """GET /api/scan - Scan WiFi networks"""
-        networks = self.wifi.scan_networks()
-        response = {
-            'status': 'ok',
-            'networks': networks
-        }
-        self.send_response(client, '200 OK', 'application/json', response)
-    
-    def handle_post_connect(self, body, client):
-        """POST /api/connect - Connect to WiFi"""
+    def handle_request(self, request):
+        """Parse HTTP request"""
         try:
-            data = json.loads(body.decode())
+            lines = request.split('\r\n')
+            request_line = lines[0].split()
+            
+            if len(request_line) < 2:
+                return None, None
+            
+            method = request_line[0]
+            path = request_line[1]
+            
+            return method, path
+        except:
+            return None, None
+    
+    def route_request(self, client, method, path, request):
+        """Route HTTP request to handler"""
+        
+        # CORS preflight
+        if method == 'OPTIONS':
+            self.send_response(client, 200, '')
+            return
+        
+        # API Routes
+        if path == '/':
+            # Serve index.html or root status
+            html_content = self.read_file('/index.html')
+            if html_content:
+                self.send_response(client, 200, html_content, 'text/html')
+            else:
+                self.send_response(client, 200, {
+                    'status': 'online',
+                    'message': 'Pico Rover API Server',
+                    'version': '1.0'
+                })
+        
+        elif path == '/index.html':
+            # Serve HTML interface
+            html_content = self.read_file('/index.html')
+            if html_content:
+                self.send_response(client, 200, html_content, 'text/html')
+            else:
+                self.send_response(client, 404, {'error': 'index.html not found'})
+        
+        elif path == '/status' and method == 'GET':
+            # Get rover status
+            speeds = self.rover.get_speeds()
+            self.send_response(client, 200, {
+                'battery_voltage': self.get_battery_voltage(),
+                'uptime_ms': self.get_uptime_ms(),
+                'motor_a_speed': speeds[0],
+                'motor_b_speed': speeds[1],
+                'latency_ms': 15
+            })
+        
+        elif path == '/motor' and method == 'POST':
+            # Control motors
+            data = self.parse_json_body(request)
+            speed_a = data.get('a', 0)
+            speed_b = data.get('b', 0)
+            
+            self.rover.drive(speed_a, speed_b)
+            
+            self.send_response(client, 200, {
+                'success': True,
+                'motor_a': speed_a,
+                'motor_b': speed_b
+            })
+        
+        elif path == '/motor/stop' and method == 'POST':
+            # Emergency stop
+            self.rover.stop()
+            self.send_response(client, 200, {
+                'success': True,
+                'message': 'All motors stopped'
+            })
+        
+        elif path == '/api/scan' and method == 'GET':
+            # Scan WiFi networks (from wifi_manager)
+            try:
+                from wifi_manager import WiFiManager
+                wifi = WiFiManager()
+                networks = wifi.scan_networks()
+                self.send_response(client, 200, {'networks': networks})
+            except:
+                self.send_response(client, 200, {'networks': []})
+        
+        elif path == '/api/connect' and method == 'POST':
+            # Connect to WiFi network
+            data = self.parse_json_body(request)
             ssid = data.get('ssid')
             password = data.get('password')
             
             if not ssid:
-                self.send_response(client, '400 Bad Request', 'application/json', 
-                                 {'error': 'Missing SSID'})
+                self.send_response(client, 400, {'error': 'Missing SSID'})
                 return
             
-            success = self.wifi.connect_station(ssid, password)
-            response = {
-                'status': 'ok',
-                'success': success,
-                'ssid': ssid
-            }
-            
-            self.send_response(client, '200 OK', 'application/json', response)
-        except Exception as e:
-            self.send_response(client, '400 Bad Request', 'application/json', 
-                             {'error': str(e)})
-    
-    def handle_root(self, client):
-        """GET / - Root endpoint"""
-        html = """
-        <html>
-        <head><title>Pico Rover</title></head>
-        <body style="font-family: Arial; margin: 20px;">
-            <h1>🤖 Pico Rover Control</h1>
-            <p>API endpoints:</p>
-            <ul>
-                <li><code>GET /status</code> - Get rover status</li>
-                <li><code>POST /motor?a=50&b=-30</code> - Set motor speeds</li>
-                <li><code>GET /api/scan</code> - Scan WiFi networks</li>
-                <li><code>POST /api/connect</code> - Connect to WiFi</li>
-            </ul>
-            <p>Use the <a href="https://zhadowvalker.github.io/Pico-Rover/">GitHub Pages remote</a> to control the rover.</p>
-        </body>
-        </html>
-        """
-        self.send_response(client, '200 OK', 'text/html', html)
-    
-    def handle_client(self, client, addr):
-        """Handle incoming client connection"""
-        try:
-            # Receive request
-            request = b''
-            while True:
-                chunk = client.recv(1024)
-                if not chunk:
-                    break
-                request += chunk
-                if len(request) > 4096:
-                    break
-                if b'\r\n\r\n' in request:
-                    break
-            
-            # Parse request
-            request_str = request.decode('utf-8', errors='ignore')
-            lines = request_str.split('\r\n')
-            
-            if not lines:
-                return
-            
-            # Parse request line
-            parts = lines[0].split(' ')
-            if len(parts) < 2:
-                return
-            
-            method = parts[0]
-            path = parts[1]
-            
-            # Parse path and query string
-            if '?' in path:
-                path, qs = path.split('?', 1)
-                params = self.parse_query_string(qs)
-            else:
-                params = {}
-            
-            # Get body if present
-            body = b''
-            if len(lines) > 1:
-                body_start = request.find(b'\r\n\r\n')
-                if body_start != -1:
-                    body = request[body_start + 4:]
-            
-            # Route requests
-            if path == '/' and method == 'GET':
-                self.handle_root(client)
-            elif path == '/status' and method == 'GET':
-                self.handle_get_status(client)
-            elif path == '/motor':
-                if method == 'GET':
-                    self.handle_get_motor(params, client)
-                elif method == 'POST':
-                    self.handle_post_motor(params, body, client)
-            elif path == '/api/scan' and method == 'GET':
-                self.handle_get_scan(client)
-            elif path == '/api/connect' and method == 'POST':
-                self.handle_post_connect(body, client)
-            else:
-                self.send_response(client, '404 Not Found', 'text/plain', '404 Not Found')
+            try:
+                from wifi_manager import WiFiManager
+                wifi = WiFiManager()
+                result = wifi.connect_to_network(ssid, password)
+                
+                if result:
+                    self.send_response(client, 200, {
+                        'success': True,
+                        'ssid': ssid,
+                        'ip': result.get('ip')
+                    })
+                else:
+                    self.send_response(client, 200, {
+                        'success': False,
+                        'error': 'Connection failed'
+                    })
+            except Exception as e:
+                self.send_response(client, 500, {
+                    'success': False,
+                    'error': str(e)
+                })
         
-        except Exception as e:
-            print(f"❌ Error handling client: {e}")
-        
-        finally:
-            client.close()
+        else:
+            # 404 Not Found
+            self.send_response(client, 404, {
+                'error': 'Endpoint not found',
+                'path': path
+            })
     
     def start(self):
         """Start API server"""
-        print(f"🌐 Starting API server on port {self.port}...")
-        
         self.running = True
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.start_time = time.time()
+        
+        # Create socket
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('0.0.0.0', self.port))
+        server_socket.listen(4)
+        
+        print(f"[APIServer] ✓ Server started on port {self.port}")
+        print(f"[APIServer] Access at http://192.168.4.1:{self.port}/")
         
         try:
-            server.bind(('0.0.0.0', self.port))
-            server.listen(5)
-            print(f"✅ API server listening on port {self.port}")
-            
             while self.running:
                 try:
-                    client, addr = server.accept()
-                    print(f"📞 Connection from {addr}")
-                    self.handle_client(client, addr)
-                except KeyboardInterrupt:
-                    break
+                    client, addr = server_socket.accept()
+                    
+                    # Receive request
+                    request_data = b''
+                    while True:
+                        chunk = client.recv(1024)
+                        if not chunk:
+                            break
+                        request_data += chunk
+                        if b'\r\n\r\n' in request_data:
+                            break
+                    
+                    if request_data:
+                        request_str = request_data.decode('utf-8', errors='ignore')
+                        method, path = self.handle_request(request_str)
+                        
+                        if method and path:
+                            self.route_request(client, method, path, request_str)
+                    
+                    client.close()
+                
+                except OSError as e:
+                    # Connection error
+                    print(f"[APIServer] Connection error: {e}")
                 except Exception as e:
-                    print(f"❌ Error: {e}")
+                    print(f"[APIServer] Error: {e}")
+                
+                # Garbage collection
+                gc.collect()
         
+        except KeyboardInterrupt:
+            print("[APIServer] Shutting down...")
         finally:
-            server.close()
-            print("🛑 API server stopped")
+            server_socket.close()
+            self.running = False
     
     def stop(self):
         """Stop API server"""
         self.running = False
-
-
-# Global API server instance (created in main.py)
-server = None
+        print("[APIServer] Stopped")

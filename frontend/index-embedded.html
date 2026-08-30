@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pico Rover Remote Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #ecf0f1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            color: #00ff88;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid #00ff88;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            min-width: 140px;
+            text-align: center;
+        }
+
+        .status-label {
+            font-size: 12px;
+            color: #00ff88;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-value {
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 4px;
+        }
+
+        .connection-badge {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .connected {
+            background-color: #00ff88;
+        }
+
+        .disconnected {
+            background-color: #ff4444;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .container {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+            max-width: 900px;
+            margin-bottom: 20px;
+        }
+
+        .control-panel {
+            background: rgba(0, 255, 136, 0.05);
+            border: 2px solid #00ff88;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 300px;
+        }
+
+        .control-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #00ff88;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .d-pad {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 20px;
+            width: 200px;
+            height: 200px;
+        }
+
+        .d-pad button {
+            background: rgba(0, 255, 136, 0.2);
+            border: 2px solid #00ff88;
+            color: #00ff88;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .d-pad button:active {
+            background: rgba(0, 255, 136, 0.4);
+            transform: scale(0.95);
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.6);
+        }
+
+        .d-pad button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .d-pad button:nth-child(1) { grid-column: 2; grid-row: 1; }
+        .d-pad button:nth-child(2) { grid-column: 1; grid-row: 2; }
+        .d-pad button:nth-child(3) { grid-column: 2; grid-row: 2; }
+        .d-pad button:nth-child(4) { grid-column: 3; grid-row: 2; }
+        .d-pad button:nth-child(5) { grid-column: 2; grid-row: 3; }
+
+        .mode-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .mode-buttons button {
+            flex: 1;
+            padding: 12px;
+            background: rgba(0, 255, 136, 0.2);
+            border: 2px solid #00ff88;
+            color: #00ff88;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: 12px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .mode-buttons button.active {
+            background: #00ff88;
+            color: #1a1a2e;
+        }
+
+        .mode-buttons button:hover {
+            background: rgba(0, 255, 136, 0.3);
+        }
+
+        .info-panel {
+            background: rgba(0, 255, 136, 0.05);
+            border: 2px solid #00ff88;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 250px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .info-label {
+            color: #00ff88;
+            font-size: 14px;
+        }
+
+        .info-value {
+            font-weight: bold;
+            color: #ecf0f1;
+        }
+
+        .gyro-indicator {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .gyro-value {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid #00ff88;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        .gyro-label {
+            color: #00ff88;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .gyro-number {
+            color: #ecf0f1;
+            font-weight: bold;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #888;
+            margin-top: 20px;
+        }
+
+        .speed-control {
+            margin-top: 20px;
+        }
+
+        .speed-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(0, 255, 136, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00ff88;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .speed-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00ff88;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .speed-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #00ff88;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 22px; }
+            .container { gap: 15px; }
+            .control-panel, .info-panel { min-width: 100%; }
+            .d-pad { width: 160px; height: 160px; }
+        }
+
+        .warning {
+            color: #ff6b6b;
+        }
+
+        .success {
+            color: #00ff88;
+        }
+
+        .error-message {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 12px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🚗 Pico Rover Remote</h1>
+        <p style="color: #999; font-size: 12px; margin-top: 4px;">IP: <span id="ip-address">192.168.4.1:8000</span></p>
+    </header>
+
+    <div class="status-bar">
+        <div class="status-item">
+            <div class="status-label">
+                <span class="connection-badge disconnected" id="status-badge"></span>Status
+            </div>
+            <div class="status-value" id="connection-status">Offline</div>
+        </div>
+        <div class="status-item">
+            <div class="status-label">Battery</div>
+            <div class="status-value" id="battery-voltage">-- V</div>
+        </div>
+        <div class="status-item">
+            <div class="status-label">Uptime</div>
+            <div class="status-value" id="uptime-display">-- s</div>
+        </div>
+        <div class="status-item">
+            <div class="status-label">Latency</div>
+            <div class="status-value" id="latency-ms">-- ms</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <div class="control-title">D-Pad Control</div>
+            <div class="d-pad">
+                <button onclick="moveRover(50, 50)">▲<br>Forward</button>
+                <button onclick="moveRover(50, -50)">◄<br>Left</button>
+                <button onclick="stopRover()">⏹<br>Stop</button>
+                <button onclick="moveRover(-50, 50)">►<br>Right</button>
+                <button onclick="moveRover(-50, -50)">▼<br>Back</button>
+            </div>
+
+            <div class="speed-control">
+                <div class="speed-label">
+                    <span>Speed</span>
+                    <span id="speed-value">50%</span>
+                </div>
+                <input type="range" min="10" max="100" value="50" class="speed-slider" id="speed-slider"
+                    oninput="updateSpeed(this.value)">
+            </div>
+
+            <div class="mode-buttons">
+                <button class="mode-btn active" data-mode="dpad" onclick="switchMode('dpad')">D-Pad</button>
+                <button class="mode-btn" data-mode="gyro" onclick="switchMode('gyro')">Gyro</button>
+            </div>
+
+            <div class="error-message" id="error-msg"></div>
+        </div>
+
+        <!-- Info Panel -->
+        <div class="info-panel">
+            <div class="control-title">Telemetry & Control</div>
+
+            <div class="info-item">
+                <span class="info-label">Motor A Speed</span>
+                <span class="info-value" id="motor-a">0%</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Motor B Speed</span>
+                <span class="info-value" id="motor-b">0%</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Active Mode</span>
+                <span class="info-value" id="active-mode">D-Pad</span>
+            </div>
+
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0, 255, 136, 0.2);">
+                <div class="control-title" style="margin-bottom: 10px;">Gyro Data</div>
+                <div class="gyro-indicator">
+                    <div class="gyro-value">
+                        <div class="gyro-label">Beta (X)</div>
+                        <div class="gyro-number" id="gyro-beta">0°</div>
+                    </div>
+                    <div class="gyro-value">
+                        <div class="gyro-label">Gamma (Y)</div>
+                        <div class="gyro-number" id="gyro-gamma">0°</div>
+                    </div>
+                </div>
+                <div style="margin-top: 10px; font-size: 11px; color: #888;">
+                    <p>Tilt phone to control rover</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        Pico Rover Remote Control • Connected to Pico W API
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = window.location.hostname === 'localhost' 
+            ? 'http://192.168.4.1:8000'
+            : `http://${window.location.hostname}:8000`;
+        
+        let currentMode = 'dpad';
+        let currentSpeed = 50;
+        let isConnected = false;
+        let telemetryInterval = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Pico Rover Remote initialized');
+            console.log('API Base:', API_BASE);
+            
+            startTelemetry();
+            requestGyroPermission();
+            
+            // Update IP display
+            document.getElementById('ip-address').textContent = 
+                window.location.hostname === 'localhost' ? '192.168.4.1:8000' : window.location.host;
+        });
+
+        // ==================== Motor Control ====================
+
+        function moveRover(speedA, speedB) {
+            if (!isConnected) return;
+
+            const adjSpeedA = (speedA * currentSpeed) / 100;
+            const adjSpeedB = (speedB * currentSpeed) / 100;
+
+            fetch(`${API_BASE}/motor`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    a: Math.round(adjSpeedA),
+                    b: Math.round(adjSpeedB)
+                })
+            }).catch(e => showError(`Motor command failed: ${e.message}`));
+
+            updateMotorDisplay(adjSpeedA, adjSpeedB);
+        }
+
+        function stopRover() {
+            if (!isConnected) return;
+
+            fetch(`${API_BASE}/motor/stop`, { method: 'POST' })
+                .catch(e => showError(`Stop command failed: ${e.message}`));
+
+            updateMotorDisplay(0, 0);
+        }
+
+        function updateSpeed(value) {
+            currentSpeed = parseInt(value);
+            document.getElementById('speed-value').textContent = `${currentSpeed}%`;
+        }
+
+        function updateMotorDisplay(a, b) {
+            document.getElementById('motor-a').textContent = `${Math.round(a)}%`;
+            document.getElementById('motor-b').textContent = `${Math.round(b)}%`;
+        }
+
+        // ==================== Telemetry ====================
+
+        function startTelemetry() {
+            telemetryInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/status`, { timeout: 2000 });
+                    const data = await response.json();
+
+                    isConnected = true;
+                    updateStatus(data);
+                    updateConnectionBadge(true);
+                } catch (e) {
+                    isConnected = false;
+                    updateConnectionBadge(false);
+                    showError(`Connection lost: ${e.message}`);
+                }
+            }, 1000);
+        }
+
+        function updateStatus(data) {
+            const latency = data.latency_ms || '?';
+            const battery = (data.battery_voltage || 0).toFixed(2);
+            const uptime = Math.floor((data.uptime_ms || 0) / 1000);
+
+            document.getElementById('battery-voltage').textContent = `${battery}V`;
+            document.getElementById('uptime-display').textContent = `${uptime}s`;
+            document.getElementById('latency-ms').textContent = `${latency}ms`;
+            document.getElementById('connection-status').textContent = 'Online';
+        }
+
+        function updateConnectionBadge(connected) {
+            const badge = document.getElementById('status-badge');
+            if (connected) {
+                badge.classList.remove('disconnected');
+                badge.classList.add('connected');
+            } else {
+                badge.classList.remove('connected');
+                badge.classList.add('disconnected');
+            }
+        }
+
+        // ==================== Gyro Control ====================
+
+        function requestGyroPermission() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
+                // iOS 13+ requires permission
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            window.addEventListener('deviceorientation', handleGyro);
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Android and older iOS
+                window.addEventListener('deviceorientation', handleGyro);
+            }
+        }
+
+        function handleGyro(event) {
+            if (currentMode !== 'gyro') return;
+
+            const beta = event.beta;  // X rotation (-180 to 180)
+            const gamma = event.gamma; // Y rotation (-90 to 90)
+
+            // Display gyro values
+            document.getElementById('gyro-beta').textContent = `${Math.round(beta)}°`;
+            document.getElementById('gyro-gamma').textContent = `${Math.round(gamma)}°`;
+
+            // Map tilt to motor speed
+            // Forward/backward: beta (tilt forward/back)
+            // Left/right: gamma (tilt left/right)
+
+            let speedA = 0, speedB = 0;
+
+            // Forward/backward (beta: -45 to 45)
+            const forward = Math.max(-90, Math.min(90, beta));
+            const baseSpeed = (forward / 45) * currentSpeed;
+
+            // Left/right (gamma: -45 to 45)
+            const turn = Math.max(-90, Math.min(90, gamma));
+            const turnFactor = (turn / 45);
+
+            // Differential steering
+            speedA = baseSpeed * (1 - turnFactor);
+            speedB = baseSpeed * (1 + turnFactor);
+
+            if (Math.abs(baseSpeed) > 5) {
+                moveRover(speedA, speedB);
+            } else {
+                stopRover();
+            }
+        }
+
+        // ==================== Mode Switching ====================
+
+        function switchMode(mode) {
+            currentMode = mode;
+            
+            // Update UI
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+            
+            document.getElementById('active-mode').textContent = 
+                mode === 'dpad' ? 'D-Pad' : 'Gyro';
+
+            if (mode === 'gyro') {
+                requestGyroPermission();
+            }
+
+            stopRover();
+        }
+
+        // ==================== Error Handling ====================
+
+        function showError(message) {
+            const errorMsg = document.getElementById('error-msg');
+            errorMsg.textContent = message;
+            errorMsg.classList.add('show');
+            setTimeout(() => {
+                errorMsg.classList.remove('show');
+            }, 3000);
+        }
+
+        // ==================== Cleanup ====================
+
+        window.addEventListener('beforeunload', () => {
+            if (telemetryInterval) clearInterval(telemetryInterval);
+            stopRover();
+        });
+    </script>
+</body>
+</html>
