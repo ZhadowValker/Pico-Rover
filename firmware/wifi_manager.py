@@ -20,7 +20,6 @@ class WiFiManager:
         
         self.ap = network.WLAN(network.AP_IF)
         self.ap.config(essid=AP_SSID, password=AP_PASSWORD)
-        self.ap.config(dhcp_hostname='rover')
         self.ap.ifconfig((AP_IP, AP_SUBNET, AP_IP, AP_IP))
         self.ap.active(True)
         
@@ -28,7 +27,7 @@ class WiFiManager:
         import time
         time.sleep(1)
         
-        status = self.ap.isconnected()
+        status = self.ap.active()
         if status:
             print(f"✅ AP active at {AP_IP}")
         else:

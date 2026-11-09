@@ -14,6 +14,11 @@ MOTOR_B_PWM = 15
 # PWM frequency
 PWM_FREQ = 5000
 
+# Motors start turning at about this duty (%); below it they only buzz.
+# Throttle 1..100 % is mapped onto MOTOR_MIN_DUTY..100 %. Lower it if the
+# rover jumps off too fast at low throttle; raise it if it still buzzes.
+MOTOR_MIN_DUTY = 62
+
 # ============ Sensor Pins ============
 BATTERY_ADC = 26  # ADC0
 BATTERY_SCALE = 3.3 / 65535  # Convert ADC to voltage

@@ -3,6 +3,14 @@
 import time
 import sys
 
+# The TLS handshake is the slow part (1-3 s at the default 125 MHz).
+# Running the RP2040 at 250 MHz makes it roughly twice as fast.
+try:
+    import machine
+    machine.freq(250_000_000)
+except Exception as e:
+    print("Overclock skipped:", e)
+
 print("\n" + "="*50)
 print("🤖 Pico W Rover Startup")
 print("="*50)
@@ -46,7 +54,7 @@ except Exception as e:
 # Start API server
 print("🌐 Starting API server...")
 try:
-    server = APIServer(rover, wifi, port=8000)
+    server = APIServer(rover, port=443, use_tls=True, http_port=80)
     print("✅ API server ready")
     
     # Start server in a thread-like manner (blocking call)
@@ -55,7 +63,8 @@ try:
     print("="*50)
     print(f"AP SSID: RoverSetup")
     print(f"AP IP: 192.168.4.1")
-    print(f"Setup: http://192.168.4.1/setup")
+    print(f"Control page (reliable): http://192.168.4.1/")
+    print(f"Gyro page (secure):      https://192.168.4.1/")
     print("="*50 + "\n")
     
     server.start()  # This blocks

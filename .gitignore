@@ -26,3 +26,7 @@ build/
 
 # Local config
 wifi_config.json
+
+# HTTPS certificate and private key (generate with firmware/gen_cert.sh)
+*.der
+*.pem

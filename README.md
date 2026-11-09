@@ -30,7 +30,35 @@ A WiFi-controlled two-wheeled rover using Raspberry Pi Pico W and DRV8833 motor 
 - Auto-discovery of rover IP
 - Settings/configuration panel
 
-## Quick Start
+## Quick Start (tested setup)
+
+This is the setup that was tested on real hardware (Pico W, MicroPython v1.29.0, DRV8833).
+
+1. Flash MicroPython for **RPI_PICO_W** (hold BOOTSEL, copy the `.uf2` onto the `RPI-RP2` drive).
+2. Make the HTTPS certificate (needed only for gyro): `cd firmware && sh gen_cert.sh`
+3. Copy the files to the Pico's root:
+   ```bash
+   cd firmware
+   mpremote cp config.py :config.py + cp motor_control.py :motor_control.py \
+     + cp wifi_manager.py :wifi_manager.py + cp api_server.py :api_server.py \
+     + cp main.py :main.py + cp motor_test.py :motor_test.py \
+     + cp cert.der :cert.der + cp key.der :key.der
+   mpremote cp ../frontend/index-embedded.html :index.html + reset
+   ```
+4. Wheels off the ground: `mpremote run motor_test.py` spins each motor both ways.
+5. On the phone, join WiFi `RoverSetup` (password `rover1234`) and open:
+   - **`http://192.168.4.1/`** – fast page for D-Pad and Stick driving (use this normally)
+   - **`https://192.168.4.1/`** – secure page, only needed for Gyro (phones only allow motion
+     sensors on HTTPS). Accept the self-signed certificate warning once. It is slower, because
+     the Pico does the encryption in software.
+
+Notes:
+- **DRV8833 wiring:** speed is PWM on the IN1/IN2 pins (the chip has no separate enable pin);
+  nSLEEP must be HIGH. Pins are in `config.py`.
+- **Buzzing at low throttle:** raise `MOTOR_MIN_DUTY` in `config.py`; if it jumps off too fast, lower it.
+- **Safety:** the rover stops if no command arrives for 2 s, the page repeats STOP until the Pico
+  confirms it, and E-STOP locks the controls.
+- **Mirrored steering / reversed tilt:** use the gear menu on the page.
 
 ### 1. Hardware Assembly
 See [SETUP.md](SETUP.md) for detailed wiring and component list.

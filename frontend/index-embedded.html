@@ -1,623 +1,482 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pico Rover Remote Control</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#070b10">
+<title>Rover Cockpit</title>
+<style>
+:root{
+  --bg:#070b10; --panel:#0e1620; --panel2:#142130; --line:#1f3144;
+  --text:#e6eef7; --dim:#7d93a8; --cyan:#3ad6ff; --green:#35e08a;
+  --amber:#ffb020; --red:#ff4b55;
+  --side:clamp(70px,15vw,104px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  overflow:hidden;overscroll-behavior:none;touch-action:none;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+#app{height:100%;height:100dvh;display:grid;grid-template-rows:auto 1fr;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #ecf0f1;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
-            overflow-x: hidden;
-        }
+/* ---------- top HUD ---------- */
+.hud{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--panel);
+  border-bottom:1px solid var(--line)}
+.stat{display:flex;flex-direction:column;min-width:0;padding:0 6px}
+.stat small{font-size:9px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+.stat b{font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);margin-right:6px;
+  box-shadow:0 0 8px currentColor;color:var(--red)}
+.dot.on{background:var(--green);color:var(--green)}
+.seg{display:flex;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
+.seg button{padding:9px 12px;border-radius:9px;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--dim)}
+.seg button.on{background:var(--cyan);color:#001018}
+.iconbtn{width:40px;height:40px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-size:18px}
+#estop{height:40px;padding:0 14px;border-radius:10px;background:var(--red);color:#fff;font-weight:800;
+  letter-spacing:.08em;font-size:12px;border:2px solid #ff8a90}
+#estop.on{background:#fff;color:var(--red);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.55}}
 
-        header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
+/* ---------- cockpit ---------- */
+.cockpit{min-height:0;display:grid;grid-template-columns:var(--side) 1fr var(--side);gap:8px;padding:8px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;min-height:0;position:relative}
 
-        h1 {
-            font-size: 28px;
-            margin-bottom: 8px;
-            color: #00ff88;
-            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
-        }
+/* throttle */
+.throttle{display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:8px}
+.throttle small,.gauges small{font-size:9px;letter-spacing:.14em;color:var(--dim)}
+.throttle b{font-size:20px;font-variant-numeric:tabular-nums}
+#thr{flex:1;min-height:0;width:58%;max-width:60px;border-radius:14px;background:var(--bg);
+  border:1px solid var(--line);position:relative;overflow:hidden;touch-action:none}
+#thr-fill{position:absolute;left:0;right:0;bottom:0;height:44%;
+  background:linear-gradient(0deg,var(--green),var(--cyan));opacity:.9}
+#thr-grip{position:absolute;left:6%;right:6%;height:8px;border-radius:4px;background:#fff;
+  box-shadow:0 0 10px #fff9;bottom:44%;transform:translateY(50%)}
+#thr::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent 0 calc(10% - 1px),#ffffff22 calc(10% - 1px) 10%)}
 
-        .status-bar {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
+/* stage */
+.stage{display:grid;place-items:center;container-type:size;overflow:hidden}
+.stage>.view{display:none}
+.stage[data-mode=dpad] #dpad{display:grid}
+.stage[data-mode=stick] #stick{display:block}
+.stage[data-mode=gyro] #gyro{display:flex}
+.view{--pad:min(52vmin,300px);--pad:min(88cqw,88cqh,340px)}
 
-        .status-item {
-            background: rgba(0, 255, 136, 0.1);
-            border: 1px solid #00ff88;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 14px;
-            min-width: 140px;
-            text-align: center;
-        }
+/* d-pad */
+#dpad{width:var(--pad);height:var(--pad);grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:6%}
+.dp{border-radius:22%;background:var(--panel2);border:1px solid var(--line);font-size:calc(var(--pad)*.15);
+  color:var(--cyan);display:grid;place-items:center;touch-action:none}
+.dp.on{background:var(--cyan);color:#001018;box-shadow:0 0 18px #3ad6ff88}
+.dp[data-dir=up]{grid-area:1/2}.dp[data-dir=left]{grid-area:2/1}
+.dp[data-dir=stop]{grid-area:2/2;border-radius:50%;color:var(--red);font-size:calc(var(--pad)*.11)}
+.dp[data-dir=right]{grid-area:2/3}.dp[data-dir=down]{grid-area:3/2}
 
-        .status-label {
-            font-size: 12px;
-            color: #00ff88;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
+/* joystick */
+#stick{width:var(--pad);height:var(--pad);border-radius:50%;position:relative;touch-action:none;
+  background:radial-gradient(circle at 50% 50%,#142a3d 0,#0b1722 70%);border:2px solid var(--line)}
+#stick::before,#stick::after{content:"";position:absolute;background:#ffffff14}
+#stick::before{left:50%;top:8%;bottom:8%;width:1px}
+#stick::after{top:50%;left:8%;right:8%;height:1px}
+#knob{position:absolute;inset:0;margin:auto;width:38%;height:38%;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#7fe6ff,#1aa7d6);box-shadow:0 6px 18px #0009,0 0 18px #3ad6ff66;
+  transition:transform .12s ease-out}
+#knob.drag{transition:none}
 
-        .status-value {
-            font-size: 18px;
-            font-weight: bold;
-            margin-top: 4px;
-        }
+/* gyro */
+#gyro{--hold:110px;--hold:min(46cqw,34cqh,150px);flex-direction:column;align-items:center;justify-content:space-between;
+  gap:10px;width:100%;height:100%;padding:30px 0 14px}
+#level{--lv:150px;--lv:min(80cqw,46cqh);flex:none;width:var(--lv);height:var(--lv);margin:auto 0;border-radius:50%;position:relative;border:2px solid var(--line);
+  background:radial-gradient(circle,#142a3d,#0b1722 70%)}
+#level::before{content:"";position:absolute;inset:34%;border:1px dashed #ffffff30;border-radius:50%}
+#bubble{position:absolute;left:50%;top:50%;width:16%;height:16%;margin:-8%;border-radius:50%;background:var(--amber);
+  box-shadow:0 0 14px var(--amber)}
+#hold{flex:none;width:var(--hold);height:var(--hold);padding:0;border-radius:50%;background:var(--panel2);
+  border:3px solid var(--cyan);color:var(--cyan);font-weight:800;letter-spacing:.08em;line-height:1.25;
+  font-size:calc(var(--hold)*.13);touch-action:none;box-shadow:0 0 16px #3ad6ff44}
+#hold.on{background:var(--cyan);color:#001018;box-shadow:0 0 26px #3ad6ffaa}
+#msg{position:absolute;left:10px;right:10px;top:6px;text-align:center;font-size:11px;color:var(--amber);z-index:2;
+  line-height:1.35;pointer-events:none}
 
-        .connection-badge {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 8px;
-            animation: pulse 2s infinite;
-        }
+/* gauges */
+.gauges{display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:8px}
+.bars{flex:1;min-height:0;width:100%;display:flex;justify-content:center;gap:14%}
+.bar{display:flex;flex-direction:column;align-items:center;gap:6px;width:38%;min-height:0}
+.bar b{font-size:13px;font-variant-numeric:tabular-nums}
+.track{flex:1;min-height:0;width:100%;border-radius:10px;background:var(--bg);border:1px solid var(--line);position:relative;overflow:hidden}
+.track::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:#ffffff55}
+.fill{position:absolute;left:0;right:0;background:var(--green)}
+.fill.rev{background:var(--amber)}
 
-        .connected {
-            background-color: #00ff88;
-        }
+/* settings */
+#sheet{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:9;padding:16px}
+#sheet.show{display:flex}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;width:min(420px,100%);max-height:90%;overflow:auto}
+.card h2{font-size:16px;margin-bottom:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:14px}
+.row small{display:block;color:var(--dim);font-size:11px;margin-top:2px}
+.row input{width:22px;height:22px;accent-color:var(--cyan);flex:none}
+.swap{flex:none;padding:10px 12px;border-radius:10px;background:var(--panel2);border:1px solid var(--cyan);color:var(--cyan);
+  font-size:13px;font-weight:700;text-decoration:none;text-align:center}
+.close{margin-top:12px;width:100%;padding:12px;border-radius:12px;background:var(--cyan);color:#001018;font-weight:800}
+#toast{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:var(--red);color:#fff;padding:8px 14px;border-radius:10px;font-size:12px;display:none;z-index:10;max-width:90%}
+#toast.show{display:block}
 
-        .disconnected {
-            background-color: #ff4444;
-            animation: none;
-        }
+/* Landscape: drive button sits at the bottom-right (right thumb), tilt circle stays centered */
+@media (orientation:landscape){
+  #gyro{--hold:min(36cqw,44cqh,130px);padding:30px 0 14px;justify-content:center}
+  #level{--lv:min(60cqw,64cqh);margin:0}
+  #hold{position:absolute;right:14px;bottom:14px}
+}
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .container {
-            display: flex;
-            gap: 30px;
-            justify-content: center;
-            flex-wrap: wrap;
-            max-width: 900px;
-            margin-bottom: 20px;
-        }
-
-        .control-panel {
-            background: rgba(0, 255, 136, 0.05);
-            border: 2px solid #00ff88;
-            border-radius: 12px;
-            padding: 20px;
-            min-width: 300px;
-        }
-
-        .control-title {
-            font-size: 16px;
-            font-weight: bold;
-            color: #00ff88;
-            margin-bottom: 20px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .d-pad {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 8px;
-            margin-bottom: 20px;
-            width: 200px;
-            height: 200px;
-        }
-
-        .d-pad button {
-            background: rgba(0, 255, 136, 0.2);
-            border: 2px solid #00ff88;
-            color: #00ff88;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: all 0.2s;
-            touch-action: manipulation;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-
-        .d-pad button:active {
-            background: rgba(0, 255, 136, 0.4);
-            transform: scale(0.95);
-            box-shadow: 0 0 15px rgba(0, 255, 136, 0.6);
-        }
-
-        .d-pad button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .d-pad button:nth-child(1) { grid-column: 2; grid-row: 1; }
-        .d-pad button:nth-child(2) { grid-column: 1; grid-row: 2; }
-        .d-pad button:nth-child(3) { grid-column: 2; grid-row: 2; }
-        .d-pad button:nth-child(4) { grid-column: 3; grid-row: 2; }
-        .d-pad button:nth-child(5) { grid-column: 2; grid-row: 3; }
-
-        .mode-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-
-        .mode-buttons button {
-            flex: 1;
-            padding: 12px;
-            background: rgba(0, 255, 136, 0.2);
-            border: 2px solid #00ff88;
-            color: #00ff88;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 8px;
-            font-size: 12px;
-            transition: all 0.2s;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .mode-buttons button.active {
-            background: #00ff88;
-            color: #1a1a2e;
-        }
-
-        .mode-buttons button:hover {
-            background: rgba(0, 255, 136, 0.3);
-        }
-
-        .info-panel {
-            background: rgba(0, 255, 136, 0.05);
-            border: 2px solid #00ff88;
-            border-radius: 12px;
-            padding: 20px;
-            min-width: 250px;
-        }
-
-        .info-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 12px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(0, 255, 136, 0.2);
-        }
-
-        .info-item:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
-        }
-
-        .info-label {
-            color: #00ff88;
-            font-size: 14px;
-        }
-
-        .info-value {
-            font-weight: bold;
-            color: #ecf0f1;
-        }
-
-        .gyro-indicator {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        .gyro-value {
-            background: rgba(0, 255, 136, 0.1);
-            border: 1px solid #00ff88;
-            padding: 10px;
-            border-radius: 6px;
-            text-align: center;
-            font-size: 12px;
-        }
-
-        .gyro-label {
-            color: #00ff88;
-            font-size: 11px;
-            text-transform: uppercase;
-        }
-
-        .gyro-number {
-            color: #ecf0f1;
-            font-weight: bold;
-            font-size: 14px;
-            margin-top: 4px;
-        }
-
-        .footer {
-            text-align: center;
-            font-size: 12px;
-            color: #888;
-            margin-top: 20px;
-        }
-
-        .speed-control {
-            margin-top: 20px;
-        }
-
-        .speed-slider {
-            width: 100%;
-            height: 6px;
-            border-radius: 3px;
-            background: rgba(0, 255, 136, 0.2);
-            outline: none;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-
-        .speed-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #00ff88;
-            cursor: pointer;
-            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
-        }
-
-        .speed-slider::-moz-range-thumb {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #00ff88;
-            cursor: pointer;
-            border: none;
-            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
-        }
-
-        .speed-label {
-            display: flex;
-            justify-content: space-between;
-            font-size: 12px;
-            color: #00ff88;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        @media (max-width: 600px) {
-            h1 { font-size: 22px; }
-            .container { gap: 15px; }
-            .control-panel, .info-panel { min-width: 100%; }
-            .d-pad { width: 160px; height: 160px; }
-        }
-
-        .warning {
-            color: #ff6b6b;
-        }
-
-        .success {
-            color: #00ff88;
-        }
-
-        .error-message {
-            background: rgba(255, 107, 107, 0.1);
-            border: 1px solid #ff6b6b;
-            color: #ff6b6b;
-            padding: 12px;
-            border-radius: 6px;
-            margin-top: 10px;
-            font-size: 12px;
-            display: none;
-        }
-
-        .error-message.show {
-            display: block;
-        }
-    </style>
+@media (max-width:560px) and (orientation:portrait){
+  .seg button{padding:8px 8px;font-size:11px}
+  .hud{flex-wrap:wrap}
+  .seg{order:5;width:100%;margin:2px 0 0}
+  .seg button{flex:1}
+}
+</style>
 </head>
 <body>
-    <header>
-        <h1>🚗 Pico Rover Remote</h1>
-        <p style="color: #999; font-size: 12px; margin-top: 4px;">IP: <span id="ip-address">192.168.4.1:8000</span></p>
-    </header>
-
-    <div class="status-bar">
-        <div class="status-item">
-            <div class="status-label">
-                <span class="connection-badge disconnected" id="status-badge"></span>Status
-            </div>
-            <div class="status-value" id="connection-status">Offline</div>
-        </div>
-        <div class="status-item">
-            <div class="status-label">Battery</div>
-            <div class="status-value" id="battery-voltage">-- V</div>
-        </div>
-        <div class="status-item">
-            <div class="status-label">Uptime</div>
-            <div class="status-value" id="uptime-display">-- s</div>
-        </div>
-        <div class="status-item">
-            <div class="status-label">Latency</div>
-            <div class="status-value" id="latency-ms">-- ms</div>
-        </div>
+<div id="app">
+  <header class="hud">
+    <div class="stat"><small>Link</small><b><span class="dot" id="dot"></span><span id="link">Offline</span></b></div>
+    <div class="stat"><small>Ping</small><b id="ping">--</b></div>
+    <div class="stat"><small>Battery</small><b id="batt">--</b></div>
+    <div class="seg" id="modes">
+      <button data-mode="dpad" class="on">D-PAD</button>
+      <button data-mode="stick">STICK</button>
+      <button data-mode="gyro">GYRO</button>
     </div>
+    <button class="iconbtn" id="gear" aria-label="Settings">&#9881;</button>
+    <button id="estop">E-STOP</button>
+  </header>
 
-    <div class="container">
-        <!-- Control Panel -->
-        <div class="control-panel">
-            <div class="control-title">D-Pad Control</div>
-            <div class="d-pad">
-                <button onclick="moveRover(50, 50)">▲<br>Forward</button>
-                <button onclick="moveRover(50, -50)">◄<br>Left</button>
-                <button onclick="stopRover()">⏹<br>Stop</button>
-                <button onclick="moveRover(-50, 50)">►<br>Right</button>
-                <button onclick="moveRover(-50, -50)">▼<br>Back</button>
-            </div>
+  <main class="cockpit">
+    <section class="panel throttle">
+      <small>THROTTLE</small>
+      <b id="thr-val">50%</b>
+      <div id="thr"><div id="thr-fill"></div><div id="thr-grip"></div></div>
+    </section>
 
-            <div class="speed-control">
-                <div class="speed-label">
-                    <span>Speed</span>
-                    <span id="speed-value">50%</span>
-                </div>
-                <input type="range" min="10" max="100" value="50" class="speed-slider" id="speed-slider"
-                    oninput="updateSpeed(this.value)">
-            </div>
+    <section class="panel stage" id="stage" data-mode="dpad">
+      <div id="msg"></div>
 
-            <div class="mode-buttons">
-                <button class="mode-btn active" data-mode="dpad" onclick="switchMode('dpad')">D-Pad</button>
-                <button class="mode-btn" data-mode="gyro" onclick="switchMode('gyro')">Gyro</button>
-            </div>
+      <div class="view" id="dpad">
+        <button class="dp" data-dir="up">&#9650;</button>
+        <button class="dp" data-dir="left">&#9664;</button>
+        <button class="dp" data-dir="stop">STOP</button>
+        <button class="dp" data-dir="right">&#9654;</button>
+        <button class="dp" data-dir="down">&#9660;</button>
+      </div>
 
-            <div class="error-message" id="error-msg"></div>
-        </div>
+      <div class="view" id="stick"><div id="knob"></div></div>
 
-        <!-- Info Panel -->
-        <div class="info-panel">
-            <div class="control-title">Telemetry & Control</div>
+      <div class="view" id="gyro">
+        <div id="level"><div id="bubble"></div></div>
+        <button id="hold">HOLD<br>TO<br>DRIVE</button>
+      </div>
+    </section>
 
-            <div class="info-item">
-                <span class="info-label">Motor A Speed</span>
-                <span class="info-value" id="motor-a">0%</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Motor B Speed</span>
-                <span class="info-value" id="motor-b">0%</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Active Mode</span>
-                <span class="info-value" id="active-mode">D-Pad</span>
-            </div>
+    <section class="panel gauges">
+      <small>MOTORS</small>
+      <div class="bars">
+        <div class="bar"><b id="ml">0</b>
+          <div class="track"><div class="fill" id="fl"></div></div><small>L</small></div>
+        <div class="bar"><b id="mr">0</b>
+          <div class="track"><div class="fill" id="fr"></div></div><small>R</small></div>
+      </div>
+    </section>
+  </main>
+</div>
 
-            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0, 255, 136, 0.2);">
-                <div class="control-title" style="margin-bottom: 10px;">Gyro Data</div>
-                <div class="gyro-indicator">
-                    <div class="gyro-value">
-                        <div class="gyro-label">Beta (X)</div>
-                        <div class="gyro-number" id="gyro-beta">0°</div>
-                    </div>
-                    <div class="gyro-value">
-                        <div class="gyro-label">Gamma (Y)</div>
-                        <div class="gyro-number" id="gyro-gamma">0°</div>
-                    </div>
-                </div>
-                <div style="margin-top: 10px; font-size: 11px; color: #888;">
-                    <p>Tilt phone to control rover</p>
-                </div>
-            </div>
-        </div>
-    </div>
+<div id="sheet">
+  <div class="card">
+    <h2>Settings</h2>
+    <label class="row"><span>Swap left / right motors<small>Use if turning is mirrored</small></span><input type="checkbox" id="s-swap"></label>
+    <label class="row"><span>Reverse drive direction<small>Use if forward goes backward</small></span><input type="checkbox" id="s-invert"></label>
+    <label class="row"><span>Reverse gyro tilt<small>Use if tilting feels backwards</small></span><input type="checkbox" id="s-gyro"></label>
+    <div class="row"><span id="mode-title">Page mode<small id="mode-note"></small></span>
+      <a id="swap-link" class="swap" href="#">Switch</a></div>
+    <button class="close" id="sheet-close">Done</button>
+  </div>
+</div>
+<div id="toast"></div>
 
-    <div class="footer">
-        Pico Rover Remote Control • Connected to Pico W API
-    </div>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-    <script>
-        // Configuration
-        const API_BASE = window.location.hostname === 'localhost' 
-            ? 'http://192.168.4.1:8000'
-            : `http://${window.location.hostname}:8000`;
-        
-        let currentMode = 'dpad';
-        let currentSpeed = 50;
-        let isConnected = false;
-        let telemetryInterval = null;
+// Page and API come from the same Pico address, so use relative URLs.
+const API = '';
+const HEARTBEAT_MS = 200;          // resend while a control is held (Pico failsafe = 2 s)
+const MIN_CMD_GAP_MS = 60;         // at most ~16 commands per second
 
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('Pico Rover Remote initialized');
-            console.log('API Base:', API_BASE);
-            
-            startTelemetry();
-            requestGyroPermission();
-            
-            // Update IP display
-            document.getElementById('ip-address').textContent = 
-                window.location.hostname === 'localhost' ? '192.168.4.1:8000' : window.location.host;
-        });
+const S = {
+  mode: 'dpad', throttle: 50, fwd: 0, turn: 0, estop: false, online: false,
+  needStop: false,           // true until the Pico has confirmed a stop
+  opt: { swap: false, invert: false, gyro: false },
+  gyro: { hold: false, b0: null, g0: null, b: 0, g: 0, got: false }
+};
+try { Object.assign(S.opt, JSON.parse(localStorage.getItem('rover.opt') || '{}')); } catch (e) {}
 
-        // ==================== Motor Control ====================
+/* ---------- messages ---------- */
+let toastT;
+function toast(t) {
+  const el = $('toast'); el.textContent = t; el.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 3000);
+}
+function setMsg(t) { $('msg').textContent = t || ''; }
 
-        function moveRover(speedA, speedB) {
-            if (!isConnected) return;
+/* ---------- link state ---------- */
+function setOnline(on) {
+  S.online = on;
+  $('dot').classList.toggle('on', on);
+  $('link').textContent = on ? 'Online' : 'Offline';
+}
 
-            const adjSpeedA = (speedA * currentSpeed) / 100;
-            const adjSpeedB = (speedB * currentSpeed) / 100;
+/* ---------- command queue: one in flight, latest wins ---------- */
+let inflight = false, pending = null, lastSent = 0, lastPost = 0, lastToast = 0;
+function post(url, body) { pending = { url, body }; pump(); }
+function pump() {
+  if (inflight || !pending) return;
+  const gap = pending.url === '/motor/stop' ? 0 : MIN_CMD_GAP_MS;   // stop is never delayed
+  const wait = gap - (Date.now() - lastSent);
+  if (wait > 0) { setTimeout(pump, wait); return; }
+  const c = pending; pending = null; inflight = true; lastSent = lastPost = Date.now();
+  const o = { method: 'POST' };
+  if (c.body) { o.headers = { 'Content-Type': 'application/json' }; o.body = JSON.stringify(c.body); }
+  // A command can hit a connection the Pico just closed. Retry quietly (a newer
+  // command replaces the retry), and only warn if the link really is down.
+  const attempt = n => fetch(API + c.url, o).catch(e => {
+    if (n > 0 && !pending) return new Promise(res => setTimeout(res, 150)).then(() => attempt(n - 1));
+    throw e;
+  });
+  attempt(2)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); setOnline(true); $('ping').textContent = (Date.now() - lastSent) + ' ms'; if (c.url === '/motor/stop') S.needStop = false; })
+    .catch(e => {
+      setOnline(false);
+      if (Date.now() - lastToast > 4000) { lastToast = Date.now(); toast('Link problem: ' + e.message); }
+    })
+    .finally(() => { inflight = false; pump(); });
+}
 
-            fetch(`${API_BASE}/motor`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    a: Math.round(adjSpeedA),
-                    b: Math.round(adjSpeedB)
-                })
-            }).catch(e => showError(`Motor command failed: ${e.message}`));
+/* ---------- drive ---------- */
+function gauge(id, fid, v) {
+  $(id).textContent = v;
+  const f = $(fid), p = Math.abs(v) / 2;      // 0..50 (% of track height)
+  f.className = 'fill' + (v < 0 ? ' rev' : '');
+  f.style.height = p + '%';
+  f.style.top = v >= 0 ? (50 - p) + '%' : '50%';
+}
 
-            updateMotorDisplay(adjSpeedA, adjSpeedB);
-        }
+function pushDrive() {
+  if (S.estop) return;
+  let l = S.fwd + S.turn, r = S.fwd - S.turn;
+  const m = Math.max(1, Math.abs(l), Math.abs(r)); l /= m; r /= m;
+  gauge('ml', 'fl', Math.round(l * S.throttle));
+  gauge('mr', 'fr', Math.round(r * S.throttle));
+  if (S.opt.invert) { l = -l; r = -r; }
+  if (S.opt.swap) { const t = l; l = r; r = t; }
+  const a = Math.round(l * S.throttle), b = Math.round(r * S.throttle);
+  if (a === 0 && b === 0) {
+    S.needStop = true; post('/motor/stop', null);
+  } else {
+    S.needStop = false; post('/motor', { a, b });
+  }
+}
+function setInput(fwd, turn) { S.fwd = fwd; S.turn = turn; pushDrive(); }
 
-        function stopRover() {
-            if (!isConnected) return;
+// Keep the Pico's failsafe fed while something is held.
+// Also keeps re-sending STOP until the Pico confirms it, so a lost stop can never
+// leave the rover running.
+setInterval(() => {
+  if (S.estop) { if (S.needStop) post('/motor/stop', null); return; }
+  if (S.fwd || S.turn || S.needStop) pushDrive();
+}, HEARTBEAT_MS);
 
-            fetch(`${API_BASE}/motor/stop`, { method: 'POST' })
-                .catch(e => showError(`Stop command failed: ${e.message}`));
+/* ---------- emergency stop ---------- */
+function setEstop(on) {
+  S.estop = on;
+  $('estop').classList.toggle('on', on);
+  $('estop').textContent = on ? 'RELEASE' : 'E-STOP';
+  if (on) {
+    S.fwd = S.turn = 0; S.needStop = true;
+    resetInputs(); gauge('ml', 'fl', 0); gauge('mr', 'fr', 0);
+    post('/motor/stop', null);
+    setMsg('E-STOP active - tap RELEASE to drive');
+  } else setMsg('');
+}
+$('estop').addEventListener('click', () => setEstop(!S.estop));
 
-            updateMotorDisplay(0, 0);
-        }
+/* ---------- throttle ---------- */
+function setThrottle(v) {
+  S.throttle = v;
+  const p = (v - 10) / 90 * 100;
+  $('thr-fill').style.height = p + '%';
+  $('thr-grip').style.bottom = p + '%';
+  $('thr-val').textContent = v + '%';
+  if (S.fwd || S.turn) pushDrive();
+}
+function thrFromY(y) {
+  const r = $('thr').getBoundingClientRect();
+  setThrottle(Math.round(10 + clamp(1 - (y - r.top) / r.height, 0, 1) * 90));
+}
+$('thr').addEventListener('pointerdown', e => { $('thr').setPointerCapture(e.pointerId); thrFromY(e.clientY); });
+$('thr').addEventListener('pointermove', e => { if ($('thr').hasPointerCapture(e.pointerId)) thrFromY(e.clientY); });
+setThrottle(50);
 
-        function updateSpeed(value) {
-            currentSpeed = parseInt(value);
-            document.getElementById('speed-value').textContent = `${currentSpeed}%`;
-        }
+/* ---------- D-pad ---------- */
+const DIRS = { up: [1, 0], down: [-1, 0], left: [0, -1], right: [0, 1], stop: [0, 0] };
+document.querySelectorAll('.dp').forEach(b => {
+  const d = DIRS[b.dataset.dir];
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('on'); setInput(d[0], d[1]);
+  });
+  const up = () => { b.classList.remove('on'); setInput(0, 0); };
+  b.addEventListener('pointerup', up);
+  b.addEventListener('pointercancel', up);
+  b.addEventListener('lostpointercapture', up);   // finger lifted/stolen by the OS
+});
 
-        function updateMotorDisplay(a, b) {
-            document.getElementById('motor-a').textContent = `${Math.round(a)}%`;
-            document.getElementById('motor-b').textContent = `${Math.round(b)}%`;
-        }
+/* ---------- joystick ---------- */
+const joy = $('stick'), knob = $('knob');
+function joyMove(e) {
+  const r = joy.getBoundingClientRect(), R = r.width / 2 - knob.offsetWidth / 2;
+  let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const len = Math.hypot(dx, dy);
+  if (len > R) { dx = dx / len * R; dy = dy / len * R; }
+  knob.style.transform = `translate(${dx}px,${dy}px)`;
+  let x = dx / R, y = -dy / R;
+  if (Math.hypot(x, y) < 0.12) { x = 0; y = 0; }   // dead zone
+  setInput(y, x);
+}
+joy.addEventListener('pointerdown', e => { e.preventDefault(); joy.setPointerCapture(e.pointerId); knob.classList.add('drag'); joyMove(e); });
+joy.addEventListener('pointermove', e => { if (joy.hasPointerCapture(e.pointerId)) joyMove(e); });
+const joyEnd = () => { knob.classList.remove('drag'); knob.style.transform = ''; setInput(0, 0); };
+joy.addEventListener('pointerup', joyEnd);
+joy.addEventListener('pointercancel', joyEnd);
+joy.addEventListener('lostpointercapture', joyEnd);
 
-        // ==================== Telemetry ====================
+/* ---------- gyro ---------- */
+function screenAngle() {
+  const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+  return ((a % 360) + 360) % 360;
+}
+function tilt() {                                 // returns [forward deg, right deg] relative to neutral
+  const db = S.gyro.b - S.gyro.b0, dg = S.gyro.g - S.gyro.g0;
+  let f, s;
+  switch (screenAngle()) {
+    case 90:  f = dg;  s = db;  break;
+    case 270: f = -dg; s = -db; break;
+    case 180: f = db;  s = -dg; break;
+    default:  f = -db; s = dg;
+  }
+  if (S.opt.gyro) { f = -f; s = -s; }
+  return [f, s];
+}
+const dz = v => clamp((Math.abs(v) < 6 ? 0 : v - Math.sign(v) * 6) / 20, -1, 1);   // 6 deg dead zone, full at 26 deg
 
-        function startTelemetry() {
-            telemetryInterval = setInterval(async () => {
-                try {
-                    const response = await fetch(`${API_BASE}/status`, { timeout: 2000 });
-                    const data = await response.json();
+function onOrient(e) {
+  if (S.mode !== 'gyro' || e.beta == null || e.gamma == null) return;
+  S.gyro.got = true; S.gyro.b = e.beta; S.gyro.g = e.gamma; setMsg(S.estop ? 'E-STOP active - tap RELEASE to drive' : '');
+  if (S.gyro.b0 === null) { S.gyro.b0 = e.beta; S.gyro.g0 = e.gamma; }
+  const [f, s] = tilt(), fy = dz(f), sx = dz(s);
+  $('bubble').style.transform = `translate(${sx * 230}%,${-fy * 230}%)`;
+  if (S.gyro.hold) setInput(fy, sx);
+}
+$('hold').addEventListener('pointerdown', e => {
+  e.preventDefault(); $('hold').setPointerCapture(e.pointerId); $('hold').classList.add('on');
+  S.gyro.b0 = S.gyro.b; S.gyro.g0 = S.gyro.g;   // pressing sets the neutral pose
+  S.gyro.hold = true;
+});
+const holdEnd = () => { S.gyro.hold = false; $('hold').classList.remove('on'); $('bubble').style.transform = ''; setInput(0, 0); };
+$('hold').addEventListener('pointerup', holdEnd);
+$('hold').addEventListener('pointercancel', holdEnd);
+$('hold').addEventListener('lostpointercapture', holdEnd);
 
-                    isConnected = true;
-                    updateStatus(data);
-                    updateConnectionBadge(true);
-                } catch (e) {
-                    isConnected = false;
-                    updateConnectionBadge(false);
-                    showError(`Connection lost: ${e.message}`);
-                }
-            }, 1000);
-        }
+let gyroListening = false;
+function startGyro() {
+  S.gyro.got = false; S.gyro.b0 = null; setMsg('');
+  if (typeof DeviceOrientationEvent === 'undefined') { setMsg('Gyro is not supported by this browser. Use D-PAD or STICK.'); return; }
+  const secure = window.isSecureContext;
+  const listen = () => { if (!gyroListening) { window.addEventListener('deviceorientation', onOrient); gyroListening = true; } };
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission().then(p => {
+      if (p === 'granted') listen();
+      else setMsg('Motion permission denied. Reload the page and tap Allow.');
+    }).catch(() => setMsg(secure ? 'Could not get motion permission. Use D-PAD or STICK.' : 'Gyro needs the secure page: tap the gear, then "Switch to secure page".'));
+  } else listen();
+  setTimeout(() => {
+    if (!S.gyro.got && S.mode === 'gyro') setMsg(secure ? 'No motion data. Check browser motion permission.' : 'Gyro needs the secure page: tap the gear, then "Switch to secure page".');
+  }, 2500);
+}
 
-        function updateStatus(data) {
-            const latency = data.latency_ms || '?';
-            const battery = (data.battery_voltage || 0).toFixed(2);
-            const uptime = Math.floor((data.uptime_ms || 0) / 1000);
+/* ---------- modes ---------- */
+function resetInputs() {
+  S.gyro.hold = false;
+  document.querySelectorAll('.dp.on,#hold.on').forEach(x => x.classList.remove('on'));
+  knob.style.transform = ''; $('bubble').style.transform = '';
+}
+function setMode(m) {
+  setInput(0, 0); resetInputs();
+  S.mode = m;
+  $('stage').dataset.mode = m;
+  document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  setMsg(S.estop ? 'E-STOP active - tap RELEASE to drive' : '');
+  if (m === 'gyro') startGyro();
+}
+$('modes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); });
 
-            document.getElementById('battery-voltage').textContent = `${battery}V`;
-            document.getElementById('uptime-display').textContent = `${uptime}s`;
-            document.getElementById('latency-ms').textContent = `${latency}ms`;
-            document.getElementById('connection-status').textContent = 'Online';
-        }
+/* ---------- settings ---------- */
+const optIds = { swap: 's-swap', invert: 's-invert', gyro: 's-gyro' };
+Object.keys(optIds).forEach(k => {
+  const el = $(optIds[k]); el.checked = !!S.opt[k];
+  el.addEventListener('change', () => {
+    S.opt[k] = el.checked;
+    try { localStorage.setItem('rover.opt', JSON.stringify(S.opt)); } catch (e) {}
+  });
+});
+// Two ways to reach the same rover: plain HTTP is fast and reliable for driving;
+// HTTPS is slower on the Pico but is the only way the phone allows gyro.
+(() => {
+  const secure = location.protocol === 'https:';
+  const link = $('swap-link');
+  link.href = (secure ? 'http://' : 'https://') + location.hostname + '/';
+  link.textContent = secure ? 'Switch to fast page' : 'Switch to secure page';
+  $('mode-title').firstChild.nodeValue = secure ? 'Secure page (gyro works)' : 'Fast page (no gyro)';
+  $('mode-note').textContent = secure ? 'Slower on the Pico; use for gyro' : 'Best for D-PAD and STICK driving';
+})();
+$('gear').addEventListener('click', () => $('sheet').classList.add('show'));
+$('sheet-close').addEventListener('click', () => $('sheet').classList.remove('show'));
 
-        function updateConnectionBadge(connected) {
-            const badge = document.getElementById('status-badge');
-            if (connected) {
-                badge.classList.remove('disconnected');
-                badge.classList.add('connected');
-            } else {
-                badge.classList.remove('connected');
-                badge.classList.add('disconnected');
-            }
-        }
+/* ---------- keep-alive ping + telemetry (skipped while driving) ---------- */
+// Each new secure connection costs the Pico 1-3 seconds, so the aim is to
+// keep ONE connection open: a tiny status request every 4 s stops it going idle.
+setInterval(async () => {
+  if (inflight || pending || Date.now() - lastPost < 2500) return;
+  try {
+    const r = await fetch(API + '/status');
+    const d = await r.json();
+    setOnline(true);
+    const v = d.battery_voltage || 0;
+    $('batt').textContent = v < 0.6 ? 'n/a' : v.toFixed(1) + ' V';
+  } catch (e) { setOnline(false); }
+}, 4000);
 
-        // ==================== Gyro Control ====================
-
-        function requestGyroPermission() {
-            if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
-                // iOS 13+ requires permission
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            window.addEventListener('deviceorientation', handleGyro);
-                        }
-                    })
-                    .catch(console.error);
-            } else {
-                // Android and older iOS
-                window.addEventListener('deviceorientation', handleGyro);
-            }
-        }
-
-        function handleGyro(event) {
-            if (currentMode !== 'gyro') return;
-
-            const beta = event.beta;  // X rotation (-180 to 180)
-            const gamma = event.gamma; // Y rotation (-90 to 90)
-
-            // Display gyro values
-            document.getElementById('gyro-beta').textContent = `${Math.round(beta)}°`;
-            document.getElementById('gyro-gamma').textContent = `${Math.round(gamma)}°`;
-
-            // Map tilt to motor speed
-            // Forward/backward: beta (tilt forward/back)
-            // Left/right: gamma (tilt left/right)
-
-            let speedA = 0, speedB = 0;
-
-            // Forward/backward (beta: -45 to 45)
-            const forward = Math.max(-90, Math.min(90, beta));
-            const baseSpeed = (forward / 45) * currentSpeed;
-
-            // Left/right (gamma: -45 to 45)
-            const turn = Math.max(-90, Math.min(90, gamma));
-            const turnFactor = (turn / 45);
-
-            // Differential steering
-            speedA = baseSpeed * (1 - turnFactor);
-            speedB = baseSpeed * (1 + turnFactor);
-
-            if (Math.abs(baseSpeed) > 5) {
-                moveRover(speedA, speedB);
-            } else {
-                stopRover();
-            }
-        }
-
-        // ==================== Mode Switching ====================
-
-        function switchMode(mode) {
-            currentMode = mode;
-            
-            // Update UI
-            document.querySelectorAll('.mode-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.mode === mode);
-            });
-            
-            document.getElementById('active-mode').textContent = 
-                mode === 'dpad' ? 'D-Pad' : 'Gyro';
-
-            if (mode === 'gyro') {
-                requestGyroPermission();
-            }
-
-            stopRover();
-        }
-
-        // ==================== Error Handling ====================
-
-        function showError(message) {
-            const errorMsg = document.getElementById('error-msg');
-            errorMsg.textContent = message;
-            errorMsg.classList.add('show');
-            setTimeout(() => {
-                errorMsg.classList.remove('show');
-            }, 3000);
-        }
-
-        // ==================== Cleanup ====================
-
-        window.addEventListener('beforeunload', () => {
-            if (telemetryInterval) clearInterval(telemetryInterval);
-            stopRover();
-        });
-    </script>
+/* ---------- housekeeping ---------- */
+document.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('blur', () => { setInput(0, 0); resetInputs(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { setInput(0, 0); resetInputs(); } });
+window.addEventListener('pagehide', () => post('/motor/stop', null));
+// Keep the screen awake while driving (only works on secure pages).
+async function wake() { try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('pointerdown', wake, { once: true });
+})();
+</script>
 </body>
 </html>
