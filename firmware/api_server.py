@@ -418,7 +418,10 @@ class APIServer:
                 # sends would block us). After that keep the connection open
                 # longer so the phone reuses it.
                 if use_tls:
-                    request_data = self.read_request(client, 3000 if n_req == 0 else 15000, 2500)
+                    # Hand over to a waiting connection only after 6 s of silence: longer than
+                    # the page's 4 s keep-alive ping, so a page in use keeps its one connection
+                    # (every new HTTPS connection costs the Pico a 1-3 s handshake).
+                    request_data = self.read_request(client, 3000 if n_req == 0 else 15000, 6000)
                 else:
                     # Plain HTTP: a request arrives within milliseconds of connecting, so
                     # don't let a silent (speculative) connection block real ones.
