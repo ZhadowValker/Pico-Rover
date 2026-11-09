@@ -83,6 +83,20 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   background:radial-gradient(circle at 35% 30%,#7fe6ff,#1aa7d6);box-shadow:0 6px 18px #0009,0 0 18px #3ad6ff66;
   transition:transform .12s ease-out}
 #knob.drag{transition:none}
+#stick.view{--pad:min(52vmin,300px);--pad:min(88cqw,76cqh,340px);margin-top:30px}
+#stickmode{position:absolute;top:8px;left:50%;transform:translateX(-50%);display:none;z-index:3;
+  background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+.stage[data-mode=stick] #stickmode{display:flex}
+#stickmode button{padding:6px 12px;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--dim)}
+#stickmode button.on{background:var(--cyan);color:#001018}
+/* guided: 8 tracks the knob snaps to */
+#spokes{position:absolute;inset:6%;display:none;pointer-events:none}
+#spokes,#spokes::after{background:
+  linear-gradient(90deg,transparent calc(50% - 1px),#3ad6ff66 calc(50% - 1px) calc(50% + 1px),transparent calc(50% + 1px)),
+  linear-gradient(0deg,transparent calc(50% - 1px),#3ad6ff66 calc(50% - 1px) calc(50% + 1px),transparent calc(50% + 1px))}
+#spokes::after{content:"";position:absolute;inset:0;transform:rotate(45deg)}
+#stick.guided #spokes{display:block}
+#stick.guided::before,#stick.guided::after{display:none}
 
 /* gyro */
 #gyro{--hold:110px;--hold:min(46cqw,34cqh,150px);flex-direction:column;align-items:center;justify-content:space-between;
@@ -172,7 +186,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
         <button class="dp" data-dir="down">&#9660;</button>
       </div>
 
-      <div class="view" id="stick"><div id="knob"></div></div>
+      <div id="stickmode">
+        <button data-g="1">GUIDED</button>
+        <button data-g="0">FREE</button>
+      </div>
+      <div class="view" id="stick"><div id="spokes"></div><div id="knob"></div></div>
 
       <div class="view" id="gyro">
         <div id="level"><div id="bubble"></div></div>
@@ -219,7 +237,7 @@ const MIN_CMD_GAP_MS = 60;         // at most ~16 commands per second
 const S = {
   mode: 'dpad', throttle: 50, fwd: 0, turn: 0, estop: false, online: false,
   needStop: false,           // true until the Pico has confirmed a stop
-  opt: { swap: false, invert: false, gyro: false },
+  opt: { swap: false, invert: false, gyro: false, guided: false },
   gyro: { hold: false, b0: null, g0: null, b: 0, g: 0, got: false }
 };
 try { Object.assign(S.opt, JSON.parse(localStorage.getItem('rover.opt') || '{}')); } catch (e) {}
@@ -352,7 +370,15 @@ function joyMove(e) {
   if (len > R) { dx = dx / len * R; dy = dy / len * R; }
   knob.style.transform = `translate(${dx}px,${dy}px)`;
   let x = dx / R, y = -dy / R;
-  if (Math.hypot(x, y) < 0.12) { x = 0; y = 0; }   // dead zone
+  const mag = Math.hypot(x, y);
+  if (mag < 0.12) { x = 0; y = 0; }                 // dead zone
+  else if (S.opt.guided) {
+    // GUIDED: snap the direction to the nearest of 8 tracks, keep the distance as speed.
+    const a = Math.round(Math.atan2(y, x) / (Math.PI / 4)) * (Math.PI / 4);
+    x = Math.round(Math.cos(a) * mag * 100) / 100;
+    y = Math.round(Math.sin(a) * mag * 100) / 100;
+    knob.style.transform = `translate(${x * R}px,${-y * R}px)`;
+  }
   setInput(y, x);
 }
 joy.addEventListener('pointerdown', e => { e.preventDefault(); joy.setPointerCapture(e.pointerId); knob.classList.add('drag'); joyMove(e); });
@@ -431,6 +457,16 @@ function setMode(m) {
   if (m === 'gyro') startGyro();
 }
 $('modes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); });
+
+/* ---------- stick style: GUIDED (8 tracks) / FREE (any direction) ---------- */
+function setGuided(g) {
+  S.opt.guided = g;
+  joy.classList.toggle('guided', g);
+  document.querySelectorAll('#stickmode button').forEach(b => b.classList.toggle('on', (b.dataset.g === '1') === g));
+  try { localStorage.setItem('rover.opt', JSON.stringify(S.opt)); } catch (e) {}
+}
+$('stickmode').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setGuided(b.dataset.g === '1'); });
+setGuided(!!S.opt.guided);
 
 /* ---------- settings ---------- */
 const optIds = { swap: 's-swap', invert: 's-invert', gyro: 's-gyro' };
